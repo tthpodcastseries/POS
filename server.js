@@ -8,22 +8,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
-
-// Apple Pay domain verification - proxy from Stripe's hosted file
-app.get('/.well-known/apple-developer-merchantid-domain-association', async (req, res) => {
-  try {
-    const https = require('https');
-    https.get('https://stripe.com/files/apple-pay/apple-developer-merchantid-domain-association', (proxyRes) => {
-      res.set('Content-Type', proxyRes.headers['content-type'] || 'application/octet-stream');
-      proxyRes.pipe(res);
-    }).on('error', () => {
-      res.status(500).send('Error fetching verification file');
-    });
-  } catch (err) {
-    res.status(500).send('Error');
-  }
-});
+app.use(express.static('public', { dotfiles: 'allow' }));
 
 // --- Local transaction log (persists cash + card sales) ---
 const TX_FILE = path.join(__dirname, 'transactions.json');
