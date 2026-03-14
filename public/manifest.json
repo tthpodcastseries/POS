@@ -1,0 +1,9 @@
+{
+  "name": "TTH Podcast Series - POS",
+  "short_name": "TTH POS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e0b16",
+  "theme_color": "#140038",
+  "icons": []
+}
