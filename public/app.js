@@ -41,8 +41,8 @@
   // --- Apple Pay / Google Pay ---
   function setupPaymentRequest() {
     paymentRequest = stripe.paymentRequest({
-      country: 'US',
-      currency: 'usd',
+      country: 'CA',
+      currency: 'cad',
       total: {
         label: 'TTH Podcast Series',
         amount: 100, // placeholder, updated when user taps Pay
