@@ -5,29 +5,35 @@
 
   // --- Init ---
   async function init() {
-    const res = await fetch('/api/config');
-    const { publishableKey } = await res.json();
-    stripe = Stripe(publishableKey);
-    elements = stripe.elements();
-
-    cardElement = elements.create('card', {
-      style: {
-        base: {
-          color: '#140038',
-          fontSize: '16px',
-          fontFamily: 'Poppins, sans-serif',
-          '::placeholder': { color: '#929292' },
-        },
-        invalid: { color: '#ef4444' },
-      },
-    });
-    cardElement.mount('#card-element');
-    cardElement.on('change', (e) => {
-      document.getElementById('card-errors').textContent = e.error ? e.error.message : '';
-    });
-
-    initTerminal();
+    // Bind buttons first so the UI is always responsive
     bindEvents();
+
+    try {
+      const res = await fetch('/api/config');
+      const { publishableKey } = await res.json();
+      stripe = Stripe(publishableKey);
+      elements = stripe.elements();
+
+      cardElement = elements.create('card', {
+        style: {
+          base: {
+            color: '#140038',
+            fontSize: '16px',
+            fontFamily: 'Poppins, sans-serif',
+            '::placeholder': { color: '#929292' },
+          },
+          invalid: { color: '#ef4444' },
+        },
+      });
+      cardElement.mount('#card-element');
+      cardElement.on('change', (e) => {
+        document.getElementById('card-errors').textContent = e.error ? e.error.message : '';
+      });
+
+      initTerminal();
+    } catch (err) {
+      console.error('Stripe init error:', err);
+    }
   }
 
   function initTerminal() {
