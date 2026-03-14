@@ -65,11 +65,10 @@
     // Check if Apple Pay / Google Pay is available
     paymentRequest.canMakePayment().then((result) => {
       if (result) {
-        // Apple Pay or Google Pay is available
         document.getElementById('applePayBtn').dataset.available = 'true';
       } else {
-        // Not available - hide the button
-        document.getElementById('applePayBtn').style.display = 'none';
+        // Keep button visible but mark as unavailable
+        document.getElementById('applePayBtn').dataset.available = 'false';
       }
     });
 
@@ -263,8 +262,9 @@
     document.getElementById('applePayBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 0.5) return;
-      if (!paymentRequest) {
-        alert('Apple Pay is not available on this device.');
+      const btn = document.getElementById('applePayBtn');
+      if (!paymentRequest || btn.dataset.available === 'false') {
+        alert('Apple Pay is not available. You may need to verify your domain in Stripe Dashboard > Settings > Payments > Apple Pay.');
         return;
       }
 
