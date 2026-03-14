@@ -1,5 +1,6 @@
 (() => {
-  let stripe, elements, cardElement, terminal;
+  let stripe, elements, cardElement;
+  let paymentRequest, prButton;
   let cart = [];
   let doorQty = 1;
 
@@ -30,27 +31,105 @@
         document.getElementById('card-errors').textContent = e.error ? e.error.message : '';
       });
 
-      initTerminal();
+      // Setup Apple Pay / Google Pay via Payment Request API
+      setupPaymentRequest();
     } catch (err) {
       console.error('Stripe init error:', err);
     }
   }
 
-  function initTerminal() {
-    try {
-      terminal = StripeTerminal.create({
-        onFetchConnectionToken: async () => {
-          const res = await fetch('/api/terminal/connection-token', { method: 'POST' });
-          const data = await res.json();
-          return data.secret;
+  // --- Apple Pay / Google Pay ---
+  function setupPaymentRequest() {
+    paymentRequest = stripe.paymentRequest({
+      country: 'CA',
+      currency: 'cad',
+      total: {
+        label: 'TTH Podcast Series',
+        amount: 100, // placeholder, updated when user taps Pay
+      },
+      requestPayerName: false,
+      requestPayerEmail: false,
+    });
+
+    prButton = elements.create('paymentRequestButton', {
+      paymentRequest: paymentRequest,
+      style: {
+        paymentRequestButton: {
+          type: 'default',
+          theme: 'dark',
+          height: '48px',
         },
-        onUnexpectedReaderDisconnect: () => {
-          showTerminalMessage('Reader disconnected. Reconnect to continue.');
-        },
-      });
-    } catch (e) {
-      console.log('Terminal SDK not available:', e.message);
-    }
+      },
+    });
+
+    // Check if Apple Pay / Google Pay is available
+    paymentRequest.canMakePayment().then((result) => {
+      if (result) {
+        // Apple Pay or Google Pay is available
+        document.getElementById('applePayBtn').dataset.available = 'true';
+      } else {
+        // Not available - hide the button
+        document.getElementById('applePayBtn').style.display = 'none';
+      }
+    });
+
+    // Handle the payment
+    paymentRequest.on('paymentmethod', async (ev) => {
+      const total = getTotal();
+      try {
+        const res = await fetch('/api/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: total, description: getDescription() }),
+        });
+        const { clientSecret, paymentIntentId, error } = await res.json();
+        if (error) {
+          ev.complete('fail');
+          return;
+        }
+
+        const { paymentIntent, error: confirmError } = await stripe.confirmCardPayment(
+          clientSecret,
+          { payment_method: ev.paymentMethod.id },
+          { handleActions: false }
+        );
+
+        if (confirmError) {
+          ev.complete('fail');
+          document.getElementById('applePay-errors').textContent = confirmError.message;
+          return;
+        }
+
+        if (paymentIntent.status === 'requires_action') {
+          const { error: actionError } = await stripe.confirmCardPayment(clientSecret);
+          if (actionError) {
+            ev.complete('fail');
+            document.getElementById('applePay-errors').textContent = actionError.message;
+            return;
+          }
+        }
+
+        ev.complete('success');
+
+        // Record in local log
+        await fetch('/api/record-card-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: total,
+            description: getDescription(),
+            method: 'applepay',
+            paymentIntentId,
+          }),
+        });
+
+        document.getElementById('applePayModal').classList.add('hidden');
+        showSuccess(total, 'Apple Pay');
+      } catch (err) {
+        ev.complete('fail');
+        document.getElementById('applePay-errors').textContent = err.message;
+      }
+    });
   }
 
   // --- Cart ---
@@ -83,7 +162,7 @@
     const totalEl = document.getElementById('cartTotal');
     const totalAmountEl = document.getElementById('totalAmount');
     const chargeBtn = document.getElementById('chargeCardBtn');
-    const termBtn = document.getElementById('terminalBtn');
+    const applePayBtn = document.getElementById('applePayBtn');
     const cashBtn = document.getElementById('cashBtn');
     const clearBtn = document.getElementById('clearCartBtn');
 
@@ -92,7 +171,7 @@
       itemsEl.innerHTML = '';
       totalEl.style.display = 'none';
       chargeBtn.disabled = true;
-      termBtn.disabled = true;
+      applePayBtn.disabled = true;
       cashBtn.disabled = true;
       clearBtn.disabled = true;
       return;
@@ -101,7 +180,7 @@
     emptyEl.style.display = 'none';
     totalEl.style.display = 'flex';
     chargeBtn.disabled = false;
-    termBtn.disabled = false;
+    applePayBtn.disabled = false;
     cashBtn.disabled = false;
     clearBtn.disabled = false;
 
@@ -180,17 +259,35 @@
 
     document.getElementById('payBtn').addEventListener('click', handleCardPayment);
 
-    // --- Terminal ---
-    document.getElementById('terminalBtn').addEventListener('click', handleTerminalPayment);
+    // --- Apple Pay ---
+    document.getElementById('applePayBtn').addEventListener('click', () => {
+      const total = getTotal();
+      if (total < 0.5) return;
+      if (!paymentRequest) {
+        alert('Apple Pay is not available on this device.');
+        return;
+      }
 
-    document.getElementById('closeTerminal').addEventListener('click', () => {
-      if (terminal) terminal.cancelCollectPaymentMethod?.();
-      document.getElementById('terminalModal').classList.add('hidden');
+      // Update the payment request amount
+      paymentRequest.update({
+        total: {
+          label: 'TTH Podcast Series',
+          amount: Math.round(total * 100),
+        },
+      });
+
+      document.getElementById('applePayAmount').textContent = total.toFixed(2);
+      document.getElementById('applePay-errors').textContent = '';
+      document.getElementById('applePayModal').classList.remove('hidden');
+
+      // Mount the payment request button
+      const container = document.getElementById('payment-request-button');
+      container.innerHTML = '';
+      prButton.mount('#payment-request-button');
     });
 
-    document.getElementById('cancelTerminal').addEventListener('click', () => {
-      if (terminal) terminal.cancelCollectPaymentMethod?.();
-      document.getElementById('terminalModal').classList.add('hidden');
+    document.getElementById('closeApplePay').addEventListener('click', () => {
+      document.getElementById('applePayModal').classList.add('hidden');
     });
 
     // --- Cash ---
@@ -269,91 +366,6 @@
       payBtn.disabled = false;
       payBtn.textContent = 'Pay Now';
     }
-  }
-
-  // --- Terminal Payment ---
-  async function handleTerminalPayment() {
-    const total = getTotal();
-    if (total < 0.5) return;
-    if (!terminal) {
-      alert('Stripe Terminal is not available.');
-      return;
-    }
-
-    document.getElementById('terminalAmount').textContent = total.toFixed(2);
-    document.getElementById('terminalModal').classList.remove('hidden');
-
-    try {
-      showTerminalMessage('Discovering readers...');
-      const discoverResult = await terminal.discoverReaders({ simulated: false });
-
-      if (discoverResult.error) {
-        showTerminalMessage('No readers found. Check your reader is on and nearby.');
-        return;
-      }
-      if (discoverResult.discoveredReaders.length === 0) {
-        showTerminalMessage('No readers found nearby.');
-        return;
-      }
-
-      const reader = discoverResult.discoveredReaders[0];
-      showTerminalMessage('Connecting to ' + (reader.label || 'reader') + '...');
-      const connectResult = await terminal.connectReader(reader);
-
-      if (connectResult.error) {
-        showTerminalMessage('Failed to connect: ' + connectResult.error.message);
-        return;
-      }
-
-      showTerminalMessage('Ready - present card');
-      const res = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: total, description: getDescription() }),
-      });
-      const { clientSecret, paymentIntentId, error } = await res.json();
-      if (error) throw new Error(error);
-
-      const collectResult = await terminal.collectPaymentMethod(clientSecret);
-      if (collectResult.error) {
-        showTerminalMessage('Cancelled or failed: ' + collectResult.error.message);
-        return;
-      }
-
-      showTerminalMessage('Processing...');
-      const processResult = await terminal.processPayment(collectResult.paymentIntent);
-      if (processResult.error) {
-        showTerminalMessage('Payment failed: ' + processResult.error.message);
-        return;
-      }
-
-      await fetch('/api/terminal/capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentIntentId }),
-      });
-
-      // Record in local log
-      await fetch('/api/record-card-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: total,
-          description: getDescription(),
-          method: 'terminal',
-          paymentIntentId,
-        }),
-      });
-
-      document.getElementById('terminalModal').classList.add('hidden');
-      showSuccess(total, 'Terminal');
-    } catch (err) {
-      showTerminalMessage('Error: ' + err.message);
-    }
-  }
-
-  function showTerminalMessage(msg) {
-    document.getElementById('terminalMessage').textContent = msg;
   }
 
   // --- Cash Payment ---
@@ -465,14 +477,14 @@
             <span class="report-card-amount">$${data.card.total}</span>
           </div>
           <div class="report-card">
-            <div class="report-card-icon terminal-icon">
-              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <div class="report-card-icon applepay-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.72 6.56c-.95 1.13-2.5 2-3.98 1.87-.19-1.52.56-3.13 1.43-4.13.95-1.1 2.58-1.9 3.91-1.96.16 1.58-.47 3.13-1.36 4.22zM18.35 8.65c-2.2-.13-4.08 1.25-5.13 1.25-1.05 0-2.65-1.19-4.38-1.16-2.25.03-4.33 1.31-5.48 3.33-2.35 4.05-.6 10.06 1.68 13.36 1.13 1.63 2.47 3.45 4.23 3.39 1.69-.07 2.33-1.09 4.38-1.09 2.04 0 2.62 1.09 4.41 1.06 1.83-.03 2.99-1.66 4.12-3.3 1.28-1.88 1.81-3.7 1.84-3.8-.04-.01-3.53-1.35-3.56-5.37-.03-3.36 2.74-4.97 2.87-5.06-1.57-2.32-4.02-2.58-4.88-2.63l-.1.02z"/></svg>
             </div>
             <div class="report-card-info">
-              <span class="report-card-label">Terminal</span>
-              <span class="report-card-count">${data.terminal.count} sales</span>
+              <span class="report-card-label">Apple Pay</span>
+              <span class="report-card-count">${data.applepay.count} sales</span>
             </div>
-            <span class="report-card-amount">$${data.terminal.total}</span>
+            <span class="report-card-amount">$${data.applepay.total}</span>
           </div>
         </div>
 

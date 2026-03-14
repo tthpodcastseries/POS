@@ -150,11 +150,11 @@ app.get('/api/report', (req, res) => {
 
     const cashTxns = succeeded.filter((t) => t.method === 'cash');
     const cardTxns = succeeded.filter((t) => t.method === 'card');
-    const terminalTxns = succeeded.filter((t) => t.method === 'terminal');
+    const applePayTxns = succeeded.filter((t) => t.method === 'applepay');
 
     const cashTotal = cashTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const cardTotal = cardTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    const terminalTotal = terminalTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const applePayTotal = applePayTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
     // Group by product description
     const byProduct = {};
@@ -183,7 +183,7 @@ app.get('/api/report', (req, res) => {
       totalRevenue: totalRevenue.toFixed(2),
       cash: { count: cashTxns.length, total: cashTotal.toFixed(2) },
       card: { count: cardTxns.length, total: cardTotal.toFixed(2) },
-      terminal: { count: terminalTxns.length, total: terminalTotal.toFixed(2) },
+      applepay: { count: applePayTxns.length, total: applePayTotal.toFixed(2) },
       transactions: succeeded,
     });
   } catch (err) {

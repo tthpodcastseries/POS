@@ -632,6 +632,38 @@ main {
   border-color: transparent;
 }
 
+/* Apple Pay button */
+.btn-applepay {
+  background: #000;
+  color: #fff;
+  flex: 1;
+  border: 1px solid #333;
+}
+
+.btn-applepay:active {
+  background: #222;
+}
+
+.btn-applepay:disabled {
+  background: rgba(0,0,0,0.3);
+  color: var(--mid-grey);
+  border-color: transparent;
+}
+
+#payment-request-button {
+  margin: 16px 0;
+}
+
+.txn-method.applepay {
+  background: rgba(0,0,0,0.3);
+  color: var(--white);
+}
+
+.applepay-icon {
+  background: rgba(0,0,0,0.3);
+  color: var(--white);
+}
+
 /* Cash modal */
 .cash-confirm-text {
   text-align: center;
