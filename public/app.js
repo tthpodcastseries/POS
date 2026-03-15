@@ -29,6 +29,8 @@
       // Initialize card payment
       card = await payments.card();
       await card.attach('#card-container');
+
+      refreshInventory();
     } catch (err) {
       console.error('Square init error:', err);
       // Show error in card container so user knows
@@ -266,6 +268,7 @@
       }
 
       document.getElementById('paymentModal').classList.add('hidden');
+      refreshInventory();
       showSuccess(total, 'Card');
     } catch (err) {
       document.getElementById('card-errors').textContent = err.message;
@@ -292,6 +295,7 @@
       if (data.error) throw new Error(data.error);
 
       document.getElementById('cashModal').classList.add('hidden');
+      refreshInventory();
       showSuccess(total, 'Cash');
     } catch (err) {
       alert('Error recording cash payment: ' + err.message);
@@ -430,6 +434,42 @@
     div.textContent = str;
     return div.innerHTML;
   }
+
+  // --- Inventory ---
+  async function refreshInventory() {
+    try {
+      const res = await fetch('/api/inventory');
+      const inv = await res.json();
+      for (const [product, remaining] of Object.entries(inv)) {
+        const el = document.getElementById('inv-' + product);
+        if (el) {
+          el.textContent = remaining + ' left';
+          el.classList.toggle('sold-out', remaining <= 0);
+        }
+        // Disable buttons for sold-out items
+        const btn = document.querySelector(`[data-product="${product}"]`);
+        if (btn) {
+          btn.disabled = remaining <= 0;
+          if (remaining <= 0) btn.classList.add('sold-out-btn');
+          else btn.classList.remove('sold-out-btn');
+        }
+        // Handle door button separately
+        if (product === 'Door Ticket') {
+          const doorBtn = document.getElementById('addDoorTicket');
+          if (doorBtn) {
+            doorBtn.disabled = remaining <= 0;
+            if (remaining <= 0) doorBtn.classList.add('sold-out-btn');
+            else doorBtn.classList.remove('sold-out-btn');
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching inventory:', err);
+    }
+  }
+
+  // Refresh inventory every 10 seconds so all devices stay in sync
+  setInterval(refreshInventory, 10000);
 
   // --- Start ---
   init();

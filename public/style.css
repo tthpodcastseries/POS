@@ -143,6 +143,27 @@ main {
   color: var(--dark-grey);
 }
 
+/* Inventory remaining badges */
+.remaining {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mid-grey);
+}
+
+.remaining.sold-out {
+  color: var(--danger);
+}
+
+.sold-out-btn {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ticket-grid {
+  grid-template-columns: repeat(2, 1fr);
+  margin-bottom: 8px;
+}
+
 /* Door ticket section */
 .door-row {
   display: flex;

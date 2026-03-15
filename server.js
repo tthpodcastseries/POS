@@ -40,6 +40,96 @@ function saveTransaction(tx) {
   fs.writeFileSync(TX_FILE, JSON.stringify(txns, null, 2));
 }
 
+// --- Inventory management (shared across all devices) ---
+const INV_FILE = path.join(__dirname, 'inventory.json');
+
+const DEFAULT_INVENTORY = {
+  'Early Bird Ticket': 20,
+  'GA Ticket': 65,
+  'Door Ticket': 15,
+  'Door Tickets': 15, // alias for multi-qty
+};
+
+function loadInventory() {
+  try {
+    if (fs.existsSync(INV_FILE)) {
+      return JSON.parse(fs.readFileSync(INV_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error reading inventory file:', e.message);
+  }
+  // First run - create from defaults
+  fs.writeFileSync(INV_FILE, JSON.stringify(DEFAULT_INVENTORY, null, 2));
+  return { ...DEFAULT_INVENTORY };
+}
+
+function saveInventory(inv) {
+  fs.writeFileSync(INV_FILE, JSON.stringify(inv, null, 2));
+}
+
+// Keep Door Ticket and Door Tickets in sync (they share the same pool)
+function getDoorRemaining(inv) {
+  return Math.min(
+    inv['Door Ticket'] ?? 0,
+    inv['Door Tickets'] ?? 0
+  );
+}
+
+function setDoorRemaining(inv, count) {
+  inv['Door Ticket'] = count;
+  inv['Door Tickets'] = count;
+}
+
+// Check if inventory is available for cart items, returns { ok, error }
+function checkInventory(description) {
+  const inv = loadInventory();
+  const items = description.split(', ');
+  for (const item of items) {
+    const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+    if (match) {
+      const name = match[1].trim();
+      const qty = parseInt(match[2]);
+      if (name in inv) {
+        const available = (name === 'Door Ticket' || name === 'Door Tickets')
+          ? getDoorRemaining(inv) : inv[name];
+        if (qty > available) {
+          return { ok: false, error: `Only ${available} ${name} remaining` };
+        }
+      }
+    }
+  }
+  return { ok: true };
+}
+
+// Decrement inventory after successful payment
+function decrementInventory(description) {
+  const inv = loadInventory();
+  const items = description.split(', ');
+  for (const item of items) {
+    const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+    if (match) {
+      const name = match[1].trim();
+      const qty = parseInt(match[2]);
+      if (name === 'Door Ticket' || name === 'Door Tickets') {
+        setDoorRemaining(inv, getDoorRemaining(inv) - qty);
+      } else if (name in inv) {
+        inv[name] = Math.max(0, inv[name] - qty);
+      }
+    }
+  }
+  saveInventory(inv);
+}
+
+// Get current inventory
+app.get('/api/inventory', (req, res) => {
+  const inv = loadInventory();
+  res.json({
+    'Early Bird Ticket': inv['Early Bird Ticket'] ?? 0,
+    'GA Ticket': inv['GA Ticket'] ?? 0,
+    'Door Ticket': getDoorRemaining(inv),
+  });
+});
+
 // Expose config to frontend
 app.get('/api/config', (req, res) => {
   res.json({
@@ -57,6 +147,12 @@ app.post('/api/create-payment', async (req, res) => {
 
     if (amountCents < 100) {
       return res.status(400).json({ error: 'Amount must be at least $1.00' });
+    }
+
+    // Check inventory before charging
+    const invCheck = checkInventory(description);
+    if (!invCheck.ok) {
+      return res.status(400).json({ error: invCheck.error });
     }
 
     const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -84,6 +180,9 @@ app.post('/api/create-payment', async (req, res) => {
       created: new Date().toISOString(),
     });
 
+    // Decrement inventory after successful charge
+    decrementInventory(description);
+
     res.json({
       paymentId: payment.id,
       status: payment.status,
@@ -102,6 +201,16 @@ app.post('/api/cash-payment', (req, res) => {
     if (!amount || amount < 0.01) {
       return res.status(400).json({ error: 'Invalid amount' });
     }
+
+    // Check inventory before recording
+    const invCheck = checkInventory(description);
+    if (!invCheck.ok) {
+      return res.status(400).json({ error: invCheck.error });
+    }
+
+    // Decrement inventory
+    decrementInventory(description);
+
     saveTransaction({
       id: 'cash_' + Date.now(),
       amount: parseFloat(amount).toFixed(2),
