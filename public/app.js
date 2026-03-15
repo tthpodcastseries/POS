@@ -1,8 +1,8 @@
 (() => {
-  let stripe, elements, cardElement;
-  let paymentRequest, prButton;
+  let payments, card;
   let cart = [];
   let doorQty = 1;
+  let appConfig = {};
 
   // --- Init ---
   async function init() {
@@ -11,123 +11,45 @@
 
     try {
       const res = await fetch('/api/config');
-      const { publishableKey } = await res.json();
-      stripe = Stripe(publishableKey);
-      elements = stripe.elements();
+      appConfig = await res.json();
 
-      cardElement = elements.create('card', {
-        style: {
-          base: {
-            color: '#140038',
-            fontSize: '16px',
-            fontFamily: 'Poppins, sans-serif',
-            '::placeholder': { color: '#929292' },
-          },
-          invalid: { color: '#ef4444' },
-        },
-      });
-      cardElement.mount('#card-element');
-      cardElement.on('change', (e) => {
-        document.getElementById('card-errors').textContent = e.error ? e.error.message : '';
-      });
+      const sdkUrl = appConfig.environment === 'production'
+        ? 'https://web.squarecdn.com/v1/square.js'
+        : 'https://sandbox.web.squarecdn.com/v1/square.js';
 
-      // Setup Apple Pay / Google Pay via Payment Request API
-      setupPaymentRequest();
+      await loadScript(sdkUrl);
+
+      if (!window.Square) {
+        console.error('Square SDK failed to load');
+        return;
+      }
+
+      payments = window.Square.payments(appConfig.applicationId, appConfig.locationId);
+
+      // Initialize card payment
+      card = await payments.card();
+      await card.attach('#card-container');
     } catch (err) {
-      console.error('Stripe init error:', err);
+      console.error('Square init error:', err);
+      // Show error in card container so user knows
+      const container = document.getElementById('card-container');
+      if (container) {
+        container.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;">Card form failed to load: ' + (err.message || err) + '. Try refreshing.</p>';
+      }
     }
   }
 
-  // --- Apple Pay / Google Pay ---
-  function setupPaymentRequest() {
-    paymentRequest = stripe.paymentRequest({
-      country: 'CA',
-      currency: 'cad',
-      total: {
-        label: 'TTH Podcast Series',
-        amount: 100, // placeholder, updated when user taps Pay
-      },
-      requestPayerName: false,
-      requestPayerEmail: false,
-    });
-
-    prButton = elements.create('paymentRequestButton', {
-      paymentRequest: paymentRequest,
-      style: {
-        paymentRequestButton: {
-          type: 'default',
-          theme: 'dark',
-          height: '48px',
-        },
-      },
-    });
-
-    // Check if Apple Pay / Google Pay is available
-    paymentRequest.canMakePayment().then((result) => {
-      if (result) {
-        document.getElementById('applePayBtn').dataset.available = 'true';
-      } else {
-        // Keep button visible but mark as unavailable
-        document.getElementById('applePayBtn').dataset.available = 'false';
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) {
+        resolve();
+        return;
       }
-    });
-
-    // Handle the payment
-    paymentRequest.on('paymentmethod', async (ev) => {
-      const total = getTotal();
-      try {
-        const res = await fetch('/api/create-payment-intent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount: total, description: getDescription() }),
-        });
-        const { clientSecret, paymentIntentId, error } = await res.json();
-        if (error) {
-          ev.complete('fail');
-          return;
-        }
-
-        const { paymentIntent, error: confirmError } = await stripe.confirmCardPayment(
-          clientSecret,
-          { payment_method: ev.paymentMethod.id },
-          { handleActions: false }
-        );
-
-        if (confirmError) {
-          ev.complete('fail');
-          document.getElementById('applePay-errors').textContent = confirmError.message;
-          return;
-        }
-
-        if (paymentIntent.status === 'requires_action') {
-          const { error: actionError } = await stripe.confirmCardPayment(clientSecret);
-          if (actionError) {
-            ev.complete('fail');
-            document.getElementById('applePay-errors').textContent = actionError.message;
-            return;
-          }
-        }
-
-        ev.complete('success');
-
-        // Record in local log
-        await fetch('/api/record-card-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: total,
-            description: getDescription(),
-            method: 'applepay',
-            paymentIntentId,
-          }),
-        });
-
-        document.getElementById('applePayModal').classList.add('hidden');
-        showSuccess(total, 'Apple Pay');
-      } catch (err) {
-        ev.complete('fail');
-        document.getElementById('applePay-errors').textContent = err.message;
-      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
     });
   }
 
@@ -161,7 +83,6 @@
     const totalEl = document.getElementById('cartTotal');
     const totalAmountEl = document.getElementById('totalAmount');
     const chargeBtn = document.getElementById('chargeCardBtn');
-    const applePayBtn = document.getElementById('applePayBtn');
     const cashBtn = document.getElementById('cashBtn');
     const clearBtn = document.getElementById('clearCartBtn');
 
@@ -170,7 +91,6 @@
       itemsEl.innerHTML = '';
       totalEl.style.display = 'none';
       chargeBtn.disabled = true;
-      applePayBtn.disabled = true;
       cashBtn.disabled = true;
       clearBtn.disabled = true;
       return;
@@ -179,7 +99,6 @@
     emptyEl.style.display = 'none';
     totalEl.style.display = 'flex';
     chargeBtn.disabled = false;
-    applePayBtn.disabled = false;
     cashBtn.disabled = false;
     clearBtn.disabled = false;
 
@@ -247,7 +166,7 @@
     // --- Card ---
     document.getElementById('chargeCardBtn').addEventListener('click', () => {
       const total = getTotal();
-      if (total < 0.5) return;
+      if (total < 1) return;
       document.getElementById('modalAmount').textContent = total.toFixed(2);
       document.getElementById('paymentModal').classList.remove('hidden');
     });
@@ -257,38 +176,6 @@
     });
 
     document.getElementById('payBtn').addEventListener('click', handleCardPayment);
-
-    // --- Apple Pay ---
-    document.getElementById('applePayBtn').addEventListener('click', () => {
-      const total = getTotal();
-      if (total < 0.5) return;
-      const btn = document.getElementById('applePayBtn');
-      if (!paymentRequest || btn.dataset.available === 'false') {
-        alert('Apple Pay is not available. You may need to verify your domain in Stripe Dashboard > Settings > Payments > Apple Pay.');
-        return;
-      }
-
-      // Update the payment request amount
-      paymentRequest.update({
-        total: {
-          label: 'TTH Podcast Series',
-          amount: Math.round(total * 100),
-        },
-      });
-
-      document.getElementById('applePayAmount').textContent = total.toFixed(2);
-      document.getElementById('applePay-errors').textContent = '';
-      document.getElementById('applePayModal').classList.remove('hidden');
-
-      // Mount the payment request button
-      const container = document.getElementById('payment-request-button');
-      container.innerHTML = '';
-      prButton.mount('#payment-request-button');
-    });
-
-    document.getElementById('closeApplePay').addEventListener('click', () => {
-      document.getElementById('applePayModal').classList.add('hidden');
-    });
 
     // --- Cash ---
     document.getElementById('cashBtn').addEventListener('click', () => {
@@ -325,41 +212,61 @@
   // --- Card Payment ---
   async function handleCardPayment() {
     const total = getTotal();
-    if (total < 0.5) return;
+    if (total < 1) return;
     const payBtn = document.getElementById('payBtn');
     payBtn.disabled = true;
     payBtn.textContent = 'Processing...';
+    document.getElementById('card-errors').textContent = '';
+
+    if (!card) {
+      document.getElementById('card-errors').textContent = 'Card form not ready. Please wait a moment and try again.';
+      // Try to re-initialize
+      try {
+        if (payments) {
+          card = await payments.card();
+          await card.attach('#card-container');
+          document.getElementById('card-errors').textContent = 'Card form loaded - please try again.';
+        } else {
+          document.getElementById('card-errors').textContent = 'Square failed to load. Check your connection and refresh.';
+        }
+      } catch (initErr) {
+        document.getElementById('card-errors').textContent = 'Could not load card form: ' + initErr.message;
+      }
+      payBtn.disabled = false;
+      payBtn.textContent = 'Pay Now';
+      return;
+    }
 
     try {
-      const res = await fetch('/api/create-payment-intent', {
+      const tokenResult = await card.tokenize();
+
+      if (tokenResult.status !== 'OK') {
+        const errorMsg = tokenResult.errors
+          ? tokenResult.errors.map(e => e.message).join(', ')
+          : 'Card tokenization failed';
+        document.getElementById('card-errors').textContent = errorMsg;
+        return;
+      }
+
+      const res = await fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: total, description: getDescription() }),
+        body: JSON.stringify({
+          sourceId: tokenResult.token,
+          amount: total,
+          description: getDescription(),
+          method: 'card',
+        }),
       });
-      const { clientSecret, paymentIntentId, error } = await res.json();
-      if (error) throw new Error(error);
+      const data = await res.json();
 
-      const result = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: { card: cardElement },
-      });
-
-      if (result.error) {
-        document.getElementById('card-errors').textContent = result.error.message;
-      } else if (result.paymentIntent.status === 'succeeded') {
-        // Record in local log
-        await fetch('/api/record-card-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: total,
-            description: getDescription(),
-            method: 'card',
-            paymentIntentId,
-          }),
-        });
-        document.getElementById('paymentModal').classList.add('hidden');
-        showSuccess(total, 'Card');
+      if (data.error) {
+        document.getElementById('card-errors').textContent = data.error;
+        return;
       }
+
+      document.getElementById('paymentModal').classList.add('hidden');
+      showSuccess(total, 'Card');
     } catch (err) {
       document.getElementById('card-errors').textContent = err.message;
     } finally {
@@ -475,16 +382,6 @@
               <span class="report-card-count">${data.card.count} sales</span>
             </div>
             <span class="report-card-amount">$${data.card.total}</span>
-          </div>
-          <div class="report-card">
-            <div class="report-card-icon applepay-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.72 6.56c-.95 1.13-2.5 2-3.98 1.87-.19-1.52.56-3.13 1.43-4.13.95-1.1 2.58-1.9 3.91-1.96.16 1.58-.47 3.13-1.36 4.22zM18.35 8.65c-2.2-.13-4.08 1.25-5.13 1.25-1.05 0-2.65-1.19-4.38-1.16-2.25.03-4.33 1.31-5.48 3.33-2.35 4.05-.6 10.06 1.68 13.36 1.13 1.63 2.47 3.45 4.23 3.39 1.69-.07 2.33-1.09 4.38-1.09 2.04 0 2.62 1.09 4.41 1.06 1.83-.03 2.99-1.66 4.12-3.3 1.28-1.88 1.81-3.7 1.84-3.8-.04-.01-3.53-1.35-3.56-5.37-.03-3.36 2.74-4.97 2.87-5.06-1.57-2.32-4.02-2.58-4.88-2.63l-.1.02z"/></svg>
-            </div>
-            <div class="report-card-info">
-              <span class="report-card-label">Apple Pay</span>
-              <span class="report-card-count">${data.applepay.count} sales</span>
-            </div>
-            <span class="report-card-amount">$${data.applepay.total}</span>
           </div>
         </div>
 

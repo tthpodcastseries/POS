@@ -3,12 +3,22 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { SquareClient, SquareEnvironment } = require('square');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public', { dotfiles: 'allow' }));
+
+// Square client setup
+const squareClient = new SquareClient({
+  token: process.env.SQUARE_ACCESS_TOKEN,
+  environment: process.env.SQUARE_ENVIRONMENT === 'production'
+    ? SquareEnvironment.Production
+    : SquareEnvironment.Sandbox,
+});
+
+const locationId = process.env.SQUARE_LOCATION_ID;
 
 // --- Local transaction log (persists cash + card sales) ---
 const TX_FILE = path.join(__dirname, 'transactions.json');
@@ -30,54 +40,58 @@ function saveTransaction(tx) {
   fs.writeFileSync(TX_FILE, JSON.stringify(txns, null, 2));
 }
 
-// Expose publishable key to frontend
+// Expose config to frontend
 app.get('/api/config', (req, res) => {
-  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
+  res.json({
+    applicationId: process.env.SQUARE_APPLICATION_ID,
+    locationId: process.env.SQUARE_LOCATION_ID,
+    environment: process.env.SQUARE_ENVIRONMENT || 'sandbox',
+  });
 });
 
-// Create a PaymentIntent (used for both manual and terminal payments)
-app.post('/api/create-payment-intent', async (req, res) => {
+// Create a payment using Square
+app.post('/api/create-payment', async (req, res) => {
   try {
-    const { amount, description } = req.body;
+    const { sourceId, amount, description, method } = req.body;
     const amountCents = Math.round(amount * 100);
 
-    if (amountCents < 50) {
-      return res.status(400).json({ error: 'Amount must be at least $0.50' });
+    if (amountCents < 100) {
+      return res.status(400).json({ error: 'Amount must be at least $1.00' });
     }
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountCents,
-      currency: 'cad',
-      description: description || 'POS Sale',
-      payment_method_types: ['card'],
+    const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const response = await squareClient.payments.create({
+      sourceId,
+      idempotencyKey,
+      amountMoney: {
+        amount: BigInt(amountCents),
+        currency: 'CAD',
+      },
+      locationId,
+      note: description || 'POS Sale',
+    });
+
+    const payment = response.payment;
+
+    // Record in local log
+    saveTransaction({
+      id: payment.id,
+      amount: (Number(payment.amountMoney.amount) / 100).toFixed(2),
+      description: description || 'Sale',
+      method: method || 'card',
+      status: payment.status.toLowerCase(),
+      created: new Date().toISOString(),
     });
 
     res.json({
-      clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id,
+      paymentId: payment.id,
+      status: payment.status,
     });
   } catch (err) {
-    console.error('Error creating PaymentIntent:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Record a successful card payment in local log
-app.post('/api/record-card-payment', (req, res) => {
-  try {
-    const { amount, description, method, paymentIntentId } = req.body;
-    saveTransaction({
-      id: paymentIntentId || 'card_' + Date.now(),
-      amount: parseFloat(amount).toFixed(2),
-      description: description || 'Sale',
-      method: method || 'card',
-      status: 'succeeded',
-      created: new Date().toISOString(),
-    });
-    res.json({ status: 'recorded' });
-  } catch (err) {
-    console.error('Error recording payment:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('Error creating payment:', err);
+    const message = err.errors ? err.errors.map(e => e.detail).join(', ') : err.message;
+    res.status(500).json({ error: message });
   }
 });
 
@@ -93,35 +107,12 @@ app.post('/api/cash-payment', (req, res) => {
       amount: parseFloat(amount).toFixed(2),
       description: description || 'Cash Sale',
       method: 'cash',
-      status: 'succeeded',
+      status: 'completed',
       created: new Date().toISOString(),
     });
     res.json({ status: 'succeeded' });
   } catch (err) {
     console.error('Error recording cash payment:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- Stripe Terminal endpoints ---
-
-app.post('/api/terminal/connection-token', async (req, res) => {
-  try {
-    const connectionToken = await stripe.terminal.connectionTokens.create();
-    res.json({ secret: connectionToken.secret });
-  } catch (err) {
-    console.error('Error creating connection token:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/terminal/capture', async (req, res) => {
-  try {
-    const { paymentIntentId } = req.body;
-    const captured = await stripe.paymentIntents.capture(paymentIntentId);
-    res.json({ status: captured.status });
-  } catch (err) {
-    console.error('Error capturing payment:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -143,18 +134,15 @@ app.get('/api/transactions', (req, res) => {
 app.get('/api/report', (req, res) => {
   try {
     const txns = loadTransactions();
-    const succeeded = txns.filter((t) => t.status === 'succeeded');
+    const succeeded = txns.filter((t) => t.status === 'succeeded' || t.status === 'completed');
 
     const totalSales = succeeded.length;
     const totalRevenue = succeeded.reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
     const cashTxns = succeeded.filter((t) => t.method === 'cash');
     const cardTxns = succeeded.filter((t) => t.method === 'card');
-    const applePayTxns = succeeded.filter((t) => t.method === 'applepay');
-
     const cashTotal = cashTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const cardTotal = cardTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    const applePayTotal = applePayTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
     // Group by product description
     const byProduct = {};
@@ -172,7 +160,6 @@ app.get('/api/report', (req, res) => {
           byProduct[item].count += 1;
         }
       }
-      // Distribute revenue to the whole transaction
       const key = t.description;
       if (!byProduct[key]) byProduct[key] = { count: 0, revenue: 0 };
       byProduct[key].revenue += parseFloat(t.amount);
@@ -183,7 +170,6 @@ app.get('/api/report', (req, res) => {
       totalRevenue: totalRevenue.toFixed(2),
       cash: { count: cashTxns.length, total: cashTotal.toFixed(2) },
       card: { count: cardTxns.length, total: cardTotal.toFixed(2) },
-      applepay: { count: applePayTxns.length, total: applePayTotal.toFixed(2) },
       transactions: succeeded,
     });
   } catch (err) {
@@ -192,15 +178,33 @@ app.get('/api/report', (req, res) => {
   }
 });
 
-// Refund a charge
+
+// Refund a payment
 app.post('/api/refund', async (req, res) => {
   try {
-    const { chargeId } = req.body;
-    const refund = await stripe.refunds.create({ charge: chargeId });
-    res.json({ status: refund.status });
+    const { paymentId, amount } = req.body;
+    const idempotencyKey = `refund-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const refundRequest = {
+      paymentId,
+      idempotencyKey,
+      reason: 'Requested by seller',
+    };
+
+    // If amount provided, do partial refund
+    if (amount) {
+      refundRequest.amountMoney = {
+        amount: BigInt(Math.round(amount * 100)),
+        currency: 'CAD',
+      };
+    }
+
+    const response = await squareClient.refunds.refundPayment(refundRequest);
+    res.json({ status: response.refund.status });
   } catch (err) {
-    console.error('Error creating refund:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('Error creating refund:', err);
+    const message = err.errors ? err.errors.map(e => e.detail).join(', ') : err.message;
+    res.status(500).json({ error: message });
   }
 });
 

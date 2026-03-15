@@ -1,7 +1,7 @@
 {
   "name": "pos-system",
   "version": "1.0.0",
-  "description": "Simple POS system with Stripe integration",
+  "description": "Simple POS system with Square integration",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,6 +11,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "stripe": "^17.5.0"
+    "square": "^44.0.1"
   }
 }
