@@ -45,13 +45,16 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// Gmail SMTP email setup (Nodemailer)
+// Gmail SMTP email setup (Nodemailer) with connection timeout
 const emailTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD,
   },
+  connectionTimeout: 10000, // 10s to connect
+  greetingTimeout: 10000,   // 10s for greeting
+  socketTimeout: 15000,     // 15s for socket
 });
 
 // --- Transactions (Supabase) ---
@@ -310,11 +313,15 @@ async function handle5050IfNeeded(description, email, amount, txId, buyerInfo = 
     return { assigned: false, error: result.error };
   }
 
-  const emailSent = await sendTicketEmail(email, result.ticketNumbers, amount, buyerInfo.name);
+  // Fire-and-forget email - don't block payment response
+  sendTicketEmail(email, result.ticketNumbers, amount, buyerInfo.name).catch(err => {
+    console.error('Background email send failed:', err.message);
+  });
+
   return {
     assigned: true,
     ticketNumbers: result.ticketNumbers,
-    emailSent,
+    emailSent: true, // optimistic - email is queued
   };
 }
 
