@@ -117,7 +117,7 @@
       if (splash) splash.remove();
       const container = document.getElementById('card-container');
       if (container) {
-        container.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;">Card form failed to load: ' + (err.message || err) + '. Try refreshing.</p>';
+        container.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;cursor:pointer;" onclick="location.reload()">Card form failed to load. <u>Tap to retry.</u></p>';
       }
     }
   }
@@ -398,6 +398,9 @@
         true
       );
       if (!confirmed) return;
+      const resetBtn = document.getElementById('resetBtn');
+      resetBtn.disabled = true;
+      resetBtn.textContent = 'Resetting...';
       try {
         const res = await authPost('/api/reset', {});
         const data = await res.json();
@@ -405,9 +408,13 @@
         showToast('Factory reset complete', 'success');
         document.getElementById('drawResult').classList.add('hidden');
         document.getElementById('redrawBtn').classList.add('hidden');
-        loadJackpot();
+        refreshJackpot();
+        refreshInventory();
       } catch (err) {
         showToast('Reset failed: ' + err.message);
+      } finally {
+        resetBtn.disabled = false;
+        resetBtn.textContent = 'Factory Reset';
       }
     });
   }
@@ -511,7 +518,7 @@
         email: buyerEmail || undefined,
         buyerName: buyerName || undefined,
         buyerPhone: buyerPhone || undefined,
-        newsletterOptIn: buyerNewsletter || undefined,
+        newsletterOptIn: buyerNewsletter,
       });
       const data = await res.json();
 
@@ -545,7 +552,7 @@
         email: buyerEmail || undefined,
         buyerName: buyerName || undefined,
         buyerPhone: buyerPhone || undefined,
-        newsletterOptIn: buyerNewsletter || undefined,
+        newsletterOptIn: buyerNewsletter,
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -702,7 +709,7 @@
             </div>
             <div class="report-card-info">
               <span class="report-card-label">Cash</span>
-              <span class="report-card-count">${data.cash.count} sales</span>
+              <span class="report-card-count">${data.cash.count} sale${data.cash.count !== 1 ? 's' : ''}</span>
             </div>
             <span class="report-card-amount">$${data.cash.total}</span>
           </div>
@@ -712,7 +719,7 @@
             </div>
             <div class="report-card-info">
               <span class="report-card-label">Card</span>
-              <span class="report-card-count">${data.card.count} sales</span>
+              <span class="report-card-count">${data.card.count} sale${data.card.count !== 1 ? 's' : ''}</span>
             </div>
             <span class="report-card-amount">$${data.card.total}</span>
           </div>
@@ -725,6 +732,20 @@
               <span class="report-card-count">${tickets5050.sold} sold / ${tickets5050.available} remaining</span>
             </div>
           </div>
+        </div>
+
+        <div class="export-row">
+          ${data.newsletterSubscribers > 0 ? `
+          <a href="/api/newsletter-export" class="btn btn-export" download="yer-letter-subscribers.csv">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export Yer Letter Subscribers (${data.newsletterSubscribers}) CSV
+          </a>
+          ` : `
+          <div class="btn btn-export btn-export-disabled">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            No Yer Letter Subscribers Yet
+          </div>
+          `}
         </div>
 
         <div class="report-section-title">Recent Transactions</div>
@@ -843,7 +864,7 @@
       const detailEl = document.getElementById('jackpotDetail');
       const inlineEl = document.getElementById('jackpotInline');
       if (jackpotEl) jackpotEl.textContent = '$' + data.jackpot.toFixed(2);
-      if (detailEl) detailEl.textContent = data.soldCount + ' tickets sold \u2022 $' + data.totalSales.toFixed(2) + ' total pot';
+      if (detailEl) detailEl.textContent = data.soldCount + ' ticket' + (data.soldCount !== 1 ? 's' : '') + ' sold \u2022 $' + data.totalSales.toFixed(2) + ' total pot';
       if (inlineEl) inlineEl.textContent = 'Jackpot: $' + data.jackpot.toFixed(2);
     } catch (e) { /* ignore */ }
   }
@@ -853,7 +874,11 @@
   setInterval(refreshJackpot, 10000);
 
   // --- 50/50 Draw ---
+  let drawInProgress = false;
   async function runDraw() {
+    if (drawInProgress) return; // double-tap guard
+    drawInProgress = true;
+
     const drawBtn = document.getElementById('runDrawBtn');
     const redrawBtn = document.getElementById('redrawBtn');
     const resultDiv = document.getElementById('drawResult');
@@ -871,7 +896,7 @@
       document.getElementById('drawWinnerName').textContent = data.name || 'No name on file';
       document.getElementById('drawWinnerEmail').textContent = data.email || 'No email on file';
       document.getElementById('drawWinnerPhone').textContent = data.phone || 'No phone on file';
-      document.getElementById('drawPoolSize').textContent = data.totalSold + ' tickets sold';
+      document.getElementById('drawPoolSize').textContent = data.totalSold + ' ticket' + (data.totalSold !== 1 ? 's' : '') + ' sold';
 
       resultDiv.classList.remove('hidden');
       redrawBtn.classList.remove('hidden');
@@ -880,6 +905,7 @@
     } finally {
       drawBtn.disabled = false;
       drawBtn.textContent = 'Draw Winner';
+      drawInProgress = false;
     }
   }
 

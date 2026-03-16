@@ -250,6 +250,7 @@ main {
 .cart-section {
   padding: 0 20px;
   margin-top: auto;
+  flex-shrink: 0;
 }
 
 .cart-summary {
@@ -1107,6 +1108,9 @@ main {
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .draw-hero {
@@ -1322,4 +1326,37 @@ main {
   color: var(--mid-grey);
   text-align: center;
   margin-top: 8px;
+}
+
+/* Newsletter export button */
+.export-row {
+  margin-bottom: 24px;
+}
+
+.btn-export {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(250,204,21,0.1);
+  border: 1px solid rgba(250,204,21,0.3);
+  border-radius: 12px;
+  color: #facc15;
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-export:active {
+  background: rgba(250,204,21,0.2);
+}
+
+.btn-export-disabled {
+  opacity: 0.4;
+  pointer-events: none;
 }

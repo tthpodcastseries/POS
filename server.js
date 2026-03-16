@@ -537,6 +537,13 @@ app.get('/api/report', async (req, res) => {
       t.status === 'succeeded' || t.status === 'completed' || t.status === 'refunded'
     );
 
+    // Count unique newsletter subscribers
+    const { count: newsletterCount } = await supabase
+      .from('tickets_5050')
+      .select('buyer_email', { count: 'exact', head: true })
+      .eq('status', 'sold')
+      .eq('newsletter_opt_in', true);
+
     res.json({
       totalSales,
       totalRevenue: totalRevenue.toFixed(2),
@@ -545,6 +552,7 @@ app.get('/api/report', async (req, res) => {
       cash: { count: cashTxns.length, total: cashTotal.toFixed(2) },
       card: { count: cardTxns.length, total: cardTotal.toFixed(2) },
       tickets5050: { sold: ticketsSold || 0, available: ticketsAvailable || 0 },
+      newsletterSubscribers: newsletterCount || 0,
       transactions: allDisplayable,
     });
   } catch (err) {
@@ -664,6 +672,60 @@ app.post('/api/draw-5050', requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// --- Newsletter Subscribers Export (Mailchimp-ready CSV) ---
+app.get('/api/newsletter-export', async (req, res) => {
+  try {
+    // Get all sold tickets where newsletter_opt_in is true, deduplicate by email
+    const { data: subscribers, error } = await supabase
+      .from('tickets_5050')
+      .select('buyer_name, buyer_email, buyer_phone')
+      .eq('status', 'sold')
+      .eq('newsletter_opt_in', true);
+
+    if (error) throw error;
+
+    // Deduplicate by email (keep first occurrence)
+    const seen = new Set();
+    const unique = [];
+    for (const sub of (subscribers || [])) {
+      const email = (sub.buyer_email || '').toLowerCase();
+      if (email && !seen.has(email)) {
+        seen.add(email);
+        unique.push(sub);
+      }
+    }
+
+    // Build CSV - Mailchimp standard columns
+    const rows = [['First Name', 'Last Name', 'Email Address', 'Phone Number']];
+    for (const sub of unique) {
+      const fullName = (sub.buyer_name || '').trim();
+      const parts = fullName.split(/\s+/);
+      const firstName = parts[0] || '';
+      const lastName = parts.slice(1).join(' ') || '';
+      const email = sub.buyer_email || '';
+      const phone = sub.buyer_phone || '';
+      rows.push([csvEscape(firstName), csvEscape(lastName), csvEscape(email), csvEscape(phone)]);
+    }
+
+    const csv = rows.map(r => r.join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="yer-letter-subscribers.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error('Error exporting newsletter subscribers:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function csvEscape(value) {
+  if (!value) return '';
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return '"' + value.replace(/"/g, '""') + '"';
+  }
+  return value;
+}
 
 // --- Factory Reset (for testing) ---
 app.post('/api/reset', requireAuth, async (req, res) => {
