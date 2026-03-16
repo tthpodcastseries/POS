@@ -628,6 +628,7 @@
 
     document.getElementById('successOverlay').classList.remove('hidden');
     clearCart();
+    refreshJackpot();
   }
 
   // --- History ---
