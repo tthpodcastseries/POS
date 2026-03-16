@@ -70,6 +70,13 @@
     return fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   }
 
+  // Authenticated GET helper (for protected read endpoints)
+  function authGet(url) {
+    const headers = {};
+    if (appConfig.apiKey) headers['X-POS-Key'] = appConfig.apiKey;
+    return fetch(url, { headers });
+  }
+
   // --- Init ---
   async function init() {
     bindEvents();
@@ -370,24 +377,49 @@
 
     document.getElementById('saveInventoryBtn').addEventListener('click', saveInventoryEdits);
 
-    // --- 50/50 Draw (admin password required) ---
+    // --- 50/50 Draw (admin password validated server-side) ---
     document.getElementById('drawBtn').addEventListener('click', async () => {
       const password = prompt('Enter admin password:');
       if (!password) return;
-      if (password !== '7132') {
-        showToast('Incorrect password');
+      try {
+        const res = await fetch('/api/admin/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        if (!res.ok) {
+          showToast('Incorrect password');
+          return;
+        }
+      } catch (err) {
+        showToast('Could not verify password');
         return;
       }
       document.getElementById('drawScreen').classList.remove('hidden');
-      document.getElementById('drawResult').classList.add('hidden');
-      document.getElementById('redrawBtn').classList.add('hidden');
       refreshJackpot();
+      // Check if there's already a draw result
+      try {
+        const currentRes = await authPost('/api/draw-5050/current', {});
+        const current = await currentRes.json();
+        if (current && current.ticketNumber) {
+          displayDrawResult(current);
+        } else {
+          document.getElementById('drawResult').classList.add('hidden');
+          document.getElementById('redrawBtn').classList.add('hidden');
+        }
+      } catch (e) {
+        document.getElementById('drawResult').classList.add('hidden');
+        document.getElementById('redrawBtn').classList.add('hidden');
+      }
     });
     document.getElementById('drawBackBtn').addEventListener('click', () => {
       document.getElementById('drawScreen').classList.add('hidden');
     });
     document.getElementById('runDrawBtn').addEventListener('click', runDraw);
-    document.getElementById('redrawBtn').addEventListener('click', runDraw);
+    document.getElementById('redrawBtn').addEventListener('click', async () => {
+      const ok = await showConfirm('Draw Again?', 'This will select a NEW random winner. The previous result will be replaced. Are you sure?', 'Draw Again', true);
+      if (ok) runDraw();
+    });
 
     // Factory Reset
     document.getElementById('resetBtn').addEventListener('click', async () => {
@@ -600,7 +632,7 @@
     document.getElementById('transactionList').innerHTML = '<p class="loading">Loading...</p>';
 
     try {
-      const res = await fetch('/api/transactions');
+      const res = await authGet('/api/transactions');
       const txns = await res.json();
 
       if (txns.length === 0) {
@@ -681,7 +713,7 @@
     document.getElementById('reportContent').innerHTML = '<p class="loading">Loading...</p>';
 
     try {
-      const res = await fetch('/api/report');
+      const res = await authGet('/api/report');
       const data = await res.json();
 
       const tickets5050 = data.tickets5050 || { sold: 0, available: 0 };
@@ -736,10 +768,10 @@
 
         <div class="export-row">
           ${data.newsletterSubscribers > 0 ? `
-          <a href="/api/newsletter-export" class="btn btn-export" download="yer-letter-subscribers.csv">
+          <button onclick="window._downloadExport()" class="btn btn-export">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export Yer Letter Subscribers (${data.newsletterSubscribers}) CSV
-          </a>
+          </button>
           ` : `
           <div class="btn btn-export btn-export-disabled">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -875,13 +907,23 @@
 
   // --- 50/50 Draw ---
   let drawInProgress = false;
+
+  function displayDrawResult(data) {
+    document.getElementById('drawTicketNumber').textContent = data.ticketNumber;
+    document.getElementById('drawWinnerName').textContent = data.name || 'No name on file';
+    document.getElementById('drawWinnerEmail').textContent = data.email || 'No email on file';
+    document.getElementById('drawWinnerPhone').textContent = data.phone || 'No phone on file';
+    document.getElementById('drawPoolSize').textContent = data.totalSold + ' ticket' + (data.totalSold !== 1 ? 's' : '') + ' sold';
+    document.getElementById('drawResult').classList.remove('hidden');
+    document.getElementById('redrawBtn').classList.remove('hidden');
+  }
+
   async function runDraw() {
     if (drawInProgress) return; // double-tap guard
     drawInProgress = true;
 
     const drawBtn = document.getElementById('runDrawBtn');
     const redrawBtn = document.getElementById('redrawBtn');
-    const resultDiv = document.getElementById('drawResult');
 
     drawBtn.disabled = true;
     drawBtn.textContent = 'Drawing...';
@@ -892,14 +934,7 @@
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      document.getElementById('drawTicketNumber').textContent = data.ticketNumber;
-      document.getElementById('drawWinnerName').textContent = data.name || 'No name on file';
-      document.getElementById('drawWinnerEmail').textContent = data.email || 'No email on file';
-      document.getElementById('drawWinnerPhone').textContent = data.phone || 'No phone on file';
-      document.getElementById('drawPoolSize').textContent = data.totalSold + ' ticket' + (data.totalSold !== 1 ? 's' : '') + ' sold';
-
-      resultDiv.classList.remove('hidden');
-      redrawBtn.classList.remove('hidden');
+      displayDrawResult(data);
     } catch (err) {
       showToast('Draw failed: ' + err.message);
     } finally {
@@ -957,6 +992,23 @@
       btn.textContent = 'Save Changes';
     }
   }
+
+  // --- Newsletter CSV download (authenticated) ---
+  window._downloadExport = async function() {
+    try {
+      const res = await authGet('/api/newsletter-export');
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'yer-letter-subscribers.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast('Export failed: ' + err.message);
+    }
+  };
 
   // --- Start ---
   init();

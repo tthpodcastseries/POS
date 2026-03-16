@@ -10,12 +10,23 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public', { dotfiles: 'allow' }));
 
-// Simple API key auth for write endpoints
+// API key auth for write endpoints
 const API_KEY = process.env.POS_API_KEY;
 function requireAuth(req, res, next) {
-  if (!API_KEY) return next(); // skip if not configured
+  if (!API_KEY) {
+    console.warn('WARNING: POS_API_KEY not set - rejecting request for safety');
+    return res.status(500).json({ error: 'Server misconfigured - API key not set' });
+  }
   if (req.headers['x-pos-key'] === API_KEY) return next();
   return res.status(401).json({ error: 'Unauthorized' });
+}
+
+// Admin password auth (for draw screen, reports with PII, reset)
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '7132';
+function requireAdmin(req, res, next) {
+  const pw = req.headers['x-admin-pw'] || req.query.pw;
+  if (pw === ADMIN_PASSWORD) return next();
+  return res.status(401).json({ error: 'Admin password required' });
 }
 
 // Square client setup
@@ -377,6 +388,9 @@ app.post('/api/create-payment', requireAuth, async (req, res) => {
       if (!email) {
         return res.status(400).json({ error: 'Email required for 50/50 tickets' });
       }
+      if (!buyerName || !buyerName.trim()) {
+        return res.status(400).json({ error: 'Name required for 50/50 tickets' });
+      }
       const { count } = await supabase
         .from('tickets_5050')
         .select('*', { count: 'exact', head: true })
@@ -451,6 +465,9 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
       if (!email) {
         return res.status(400).json({ error: 'Email required for 50/50 tickets' });
       }
+      if (!buyerName || !buyerName.trim()) {
+        return res.status(400).json({ error: 'Name required for 50/50 tickets' });
+      }
       const { count } = await supabase
         .from('tickets_5050')
         .select('*', { count: 'exact', head: true })
@@ -496,7 +513,7 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
 
 // --- Transactions & Reporting ---
 
-app.get('/api/transactions', async (req, res) => {
+app.get('/api/transactions', requireAuth, async (req, res) => {
   try {
     const txns = await loadTransactions();
     res.json(txns);
@@ -506,7 +523,7 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
-app.get('/api/report', async (req, res) => {
+app.get('/api/report', requireAuth, async (req, res) => {
   try {
     const txns = await loadTransactions();
     const succeeded = txns.filter((t) => t.status === 'succeeded' || t.status === 'completed');
@@ -642,7 +659,36 @@ app.post('/api/refund', requireAuth, async (req, res) => {
   }
 });
 
-// --- 50/50 Draw ---
+// --- 50/50 Draw (with persistence) ---
+
+// In-memory draw result (persists across requests, resets on server restart)
+let currentDrawResult = null;
+
+// Server-side admin password verification
+app.post('/api/admin/verify', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    res.json({ ok: true });
+  } else {
+    res.status(401).json({ error: 'Incorrect password' });
+  }
+});
+
+// Get current draw result (if one exists)
+app.post('/api/draw-5050/current', requireAuth, async (req, res) => {
+  if (currentDrawResult) {
+    // Also fetch fresh jackpot data
+    const { count } = await supabase
+      .from('tickets_5050')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'sold');
+    res.json({ ...currentDrawResult, totalSold: count || 0 });
+  } else {
+    res.json({ winner: null });
+  }
+});
+
+// Run the draw
 app.post('/api/draw-5050', requireAuth, async (req, res) => {
   try {
     // Get all sold tickets
@@ -660,21 +706,33 @@ app.post('/api/draw-5050', requireAuth, async (req, res) => {
     // Pick one at random
     const winner = soldTickets[Math.floor(Math.random() * soldTickets.length)];
 
-    res.json({
+    const result = {
       ticketNumber: winner.ticket_number,
       email: winner.buyer_email,
       name: winner.buyer_name,
       phone: winner.buyer_phone,
       totalSold: soldTickets.length,
-    });
+      drawnAt: new Date().toISOString(),
+    };
+
+    // Persist the result
+    currentDrawResult = result;
+
+    res.json(result);
   } catch (err) {
     console.error('Error running 50/50 draw:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
+// Clear draw result (used by factory reset)
+app.post('/api/draw-5050/clear', requireAuth, async (req, res) => {
+  currentDrawResult = null;
+  res.json({ ok: true });
+});
+
 // --- Newsletter Subscribers Export (Mailchimp-ready CSV) ---
-app.get('/api/newsletter-export', async (req, res) => {
+app.get('/api/newsletter-export', requireAuth, async (req, res) => {
   try {
     // Get all sold tickets where newsletter_opt_in is true, deduplicate by email
     const { data: subscribers, error } = await supabase
@@ -756,6 +814,9 @@ app.post('/api/reset', requireAuth, async (req, res) => {
     for (const [name, remaining] of Object.entries(DEFAULT_INVENTORY)) {
       await saveInventoryItem(name, remaining);
     }
+
+    // 4. Clear draw result
+    currentDrawResult = null;
 
     console.log('Factory reset completed');
     res.json({ status: 'reset', inventory: DEFAULT_INVENTORY });
