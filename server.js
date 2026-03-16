@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { SquareClient, SquareEnvironment } = require('square');
 const { createClient } = require('@supabase/supabase-js');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const app = express();
 app.use(cors());
@@ -45,17 +45,8 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// Gmail SMTP email setup (Nodemailer) with connection timeout
-const emailTransporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-  connectionTimeout: 10000, // 10s to connect
-  greetingTimeout: 10000,   // 10s for greeting
-  socketTimeout: 15000,     // 15s for socket
-});
+// Resend email setup (HTTP-based, works on Render)
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // --- Transactions (Supabase) ---
 
@@ -265,8 +256,8 @@ async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
   const ticketList = ticketNumbers.map(n => `<li style="font-size:18px;padding:4px 0;"><strong>${n}</strong></li>`).join('');
 
   try {
-    await emailTransporter.sendMail({
-      from: `TTH Podcast Series <${process.env.GMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: 'TTH Podcast Series <onboarding@resend.dev>',
       to: email,
       subject: 'Your 50/50 Draw Ticket Numbers - An Evening for Sara J',
       html: `
@@ -294,7 +285,11 @@ async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
         </div>
       `,
     });
-    console.log('Ticket email sent to', email, '- tickets:', ticketNumbers.join(', '));
+    if (error) {
+      console.error('Resend error:', error);
+      return false;
+    }
+    console.log('Ticket email sent to', email, '- tickets:', ticketNumbers.join(', '), '- id:', data?.id);
     return true;
   } catch (err) {
     console.error('Error sending ticket email:', err.message);
@@ -836,18 +831,19 @@ app.post('/api/reset', requireAuth, async (req, res) => {
 // --- Email Test (admin diagnostic) ---
 app.post('/api/test-email', requireAuth, async (req, res) => {
   try {
-    if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-      return res.json({ ok: false, error: 'GMAIL env vars not set' });
+    if (!process.env.RESEND_API_KEY) {
+      return res.json({ ok: false, error: 'RESEND_API_KEY not set' });
     }
-    const info = await emailTransporter.sendMail({
-      from: `"TTH POS" <${process.env.GMAIL_USER}>`,
-      to: process.env.GMAIL_USER,
+    const { data, error } = await resend.emails.send({
+      from: 'TTH POS <onboarding@resend.dev>',
+      to: 'tthpodcastseries@gmail.com',
       subject: 'POS Email Test',
-      text: 'If you receive this, email delivery is working on Render.',
+      text: 'If you receive this, email delivery is working on Render via Resend.',
     });
-    res.json({ ok: true, messageId: info.messageId, response: info.response });
+    if (error) return res.json({ ok: false, error });
+    res.json({ ok: true, id: data?.id });
   } catch (err) {
-    res.json({ ok: false, error: err.message, code: err.code });
+    res.json({ ok: false, error: err.message });
   }
 });
 
@@ -855,5 +851,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`POS server running on http://localhost:${PORT}`);
   console.log(`Supabase: ${process.env.SUPABASE_URL ? 'connected' : 'NOT configured'}`);
-  console.log(`Gmail SMTP: ${process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'configured' : 'NOT configured'}`);
+  console.log(`Resend email: ${process.env.RESEND_API_KEY ? 'configured' : 'NOT configured'}`);
 });
