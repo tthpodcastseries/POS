@@ -896,7 +896,7 @@
       const detailEl = document.getElementById('jackpotDetail');
       const inlineEl = document.getElementById('jackpotInline');
       if (jackpotEl) jackpotEl.textContent = '$' + data.jackpot.toFixed(2);
-      if (detailEl) detailEl.textContent = data.soldCount + ' ticket' + (data.soldCount !== 1 ? 's' : '') + ' sold \u2022 $' + data.totalSales.toFixed(2) + ' total pot';
+      if (detailEl) detailEl.textContent = data.soldCount + ' ticket' + (data.soldCount !== 1 ? 's' : '') + ' sold \u2022 $' + data.totalSales.toFixed(2) + ' total sales';
       if (inlineEl) inlineEl.textContent = 'Jackpot: $' + data.jackpot.toFixed(2);
     } catch (e) { /* ignore */ }
   }
