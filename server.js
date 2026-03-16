@@ -410,6 +410,14 @@ app.get('/api/debug', async (req, res) => {
     results.directFetch = { status: r.status, contentRange };
   } catch (e) { results.directFetch = { error: e.message }; }
 
+  // Show actual env values for debugging
+  results.envCheck = {
+    url: process.env.SUPABASE_URL,
+    urlLength: (process.env.SUPABASE_URL || '').length,
+    keyFirst20: (process.env.SUPABASE_KEY || '').substring(0, 20),
+    keyLength: (process.env.SUPABASE_KEY || '').length,
+  };
+
   res.json(results);
 });
 
