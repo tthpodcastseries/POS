@@ -327,7 +327,7 @@
     document.getElementById('confirmEmailBtn').addEventListener('click', handleEmailConfirm);
 
     // Clear errors on typing, submit on Enter from any field
-    ['buyerName', 'buyerEmail', 'buyerPhone'].forEach(id => {
+    ['buyerFirstName', 'buyerLastName', 'buyerEmail', 'buyerPhone'].forEach(id => {
       document.getElementById(id).addEventListener('input', () => {
         document.getElementById('email-errors').textContent = '';
       });
@@ -453,32 +453,36 @@
 
   // --- Buyer Info Modal ---
   function showEmailModal() {
-    document.getElementById('buyerName').value = '';
+    document.getElementById('buyerFirstName').value = '';
+    document.getElementById('buyerLastName').value = '';
     document.getElementById('buyerEmail').value = '';
     document.getElementById('buyerPhone').value = '';
     document.getElementById('buyerNewsletter').checked = false;
     document.getElementById('email-errors').textContent = '';
     document.getElementById('emailModal').classList.remove('hidden');
-    setTimeout(() => document.getElementById('buyerName').focus(), 300);
+    setTimeout(() => document.getElementById('buyerFirstName').focus(), 300);
   }
 
   function handleEmailConfirm() {
-    const name = document.getElementById('buyerName').value.trim();
+    const firstName = document.getElementById('buyerFirstName').value.trim();
+    const lastName = document.getElementById('buyerLastName').value.trim();
     const email = document.getElementById('buyerEmail').value.trim();
     const phone = document.getElementById('buyerPhone').value.trim();
     const newsletter = document.getElementById('buyerNewsletter').checked;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
     const errors = [];
-    if (!name) errors.push('Name is required');
+    if (!firstName) errors.push('First name is required');
+    if (!lastName) errors.push('Last name is required');
     if (!email || !emailRegex.test(email)) errors.push('Valid email is required');
+    if (!phone) errors.push('Phone number is required');
 
     if (errors.length > 0) {
       document.getElementById('email-errors').textContent = errors.join('. ');
       return;
     }
 
-    buyerName = name;
+    buyerName = firstName + ' ' + lastName;
     buyerEmail = email;
     buyerPhone = phone;
     buyerNewsletter = newsletter;
