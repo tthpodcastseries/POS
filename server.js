@@ -10,6 +10,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public', { dotfiles: 'allow' }));
 
+// Simple API key auth for write endpoints
+const API_KEY = process.env.POS_API_KEY;
+function requireAuth(req, res, next) {
+  if (!API_KEY) return next(); // skip if not configured
+  if (req.headers['x-pos-key'] === API_KEY) return next();
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
 // Square client setup
 const squareClient = new SquareClient({
   token: process.env.SQUARE_ACCESS_TOKEN,
@@ -123,6 +131,26 @@ async function decrementInventory(description) {
   }
 }
 
+// Update inventory counts
+app.post('/api/inventory/update', requireAuth, async (req, res) => {
+  try {
+    const { items } = req.body; // [{ name, remaining }]
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+    for (const item of items) {
+      if (item.name && typeof item.remaining === 'number' && item.remaining >= 0) {
+        await saveInventoryItem(item.name, item.remaining);
+      }
+    }
+    const inv = await loadInventory();
+    res.json(inv);
+  } catch (err) {
+    console.error('Error updating inventory:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- 50/50 Ticket Assignment ---
 
 // Count how many 50/50 tickets are in a description
@@ -134,7 +162,7 @@ function count5050Tickets(description) {
     if (match) {
       const name = match[1].trim();
       const qty = parseInt(match[2]);
-      if (name === '50/50 Ticket' || name === '50/50 Tickets') {
+      if (name === '50/50 Tickets') {
         total += qty;
       }
     }
@@ -142,56 +170,83 @@ function count5050Tickets(description) {
   return total;
 }
 
-// Randomly assign available ticket numbers
-async function assignTickets(qty, email, txId) {
-  // Get available tickets
-  const { data: available, error } = await supabase
-    .from('tickets_5050')
-    .select('id, ticket_number')
-    .eq('status', 'available')
-    .limit(qty * 3); // grab extra to randomly pick from
+// Randomly assign available ticket numbers (race-safe)
+async function assignTickets(qty, email, txId, buyerInfo = {}) {
+  const assigned = [];
+  let attempts = 0;
+  const maxAttempts = qty + 10; // safety valve
 
-  if (error) {
-    console.error('Error fetching available tickets:', error.message);
-    return { ok: false, error: 'Could not fetch ticket pool' };
+  while (assigned.length < qty && attempts < maxAttempts) {
+    attempts++;
+
+    // Grab a batch of available tickets
+    const { data: available, error } = await supabase
+      .from('tickets_5050')
+      .select('id, ticket_number')
+      .eq('status', 'available')
+      .limit(Math.max(50, (qty - assigned.length) * 3));
+
+    if (error) {
+      console.error('Error fetching available tickets:', error.message);
+      return { ok: false, error: 'Could not fetch ticket pool' };
+    }
+
+    if (!available || available.length === 0) {
+      break; // no more tickets
+    }
+
+    // Shuffle and pick what we still need
+    const needed = qty - assigned.length;
+    const shuffled = available.sort(() => Math.random() - 0.5);
+    const candidates = shuffled.slice(0, needed);
+
+    // Try to claim each one atomically - only update if still available
+    for (const ticket of candidates) {
+      if (assigned.length >= qty) break;
+
+      const { data: updated, error: updateError } = await supabase
+        .from('tickets_5050')
+        .update({
+          status: 'sold',
+          buyer_email: email,
+          buyer_name: buyerInfo.name || null,
+          buyer_phone: buyerInfo.phone || null,
+          newsletter_opt_in: buyerInfo.newsletterOptIn || false,
+          sold_at: new Date().toISOString(),
+          transaction_id: txId,
+        })
+        .eq('id', ticket.id)
+        .eq('status', 'available') // only claim if still available
+        .select('ticket_number');
+
+      if (!updateError && updated && updated.length > 0) {
+        assigned.push(updated[0].ticket_number);
+      }
+      // If update matched 0 rows, another device grabbed it first - just skip
+    }
   }
 
-  if (!available || available.length < qty) {
-    return { ok: false, error: `Only ${available ? available.length : 0} 50/50 tickets remaining` };
+  if (assigned.length < qty) {
+    // Couldn't get enough - release what we did grab
+    if (assigned.length > 0) {
+      await supabase
+        .from('tickets_5050')
+        .update({ status: 'available', buyer_email: null, buyer_name: null, buyer_phone: null, newsletter_opt_in: false, sold_at: null, transaction_id: null })
+        .eq('transaction_id', txId);
+    }
+    return { ok: false, error: `Only ${assigned.length} 50/50 tickets available, needed ${qty}` };
   }
 
-  // Shuffle and pick
-  const shuffled = available.sort(() => Math.random() - 0.5);
-  const selected = shuffled.slice(0, qty);
-  const ticketNumbers = selected.map(t => t.ticket_number);
-  const ticketIds = selected.map(t => t.id);
-
-  // Mark as sold
-  const { error: updateError } = await supabase
-    .from('tickets_5050')
-    .update({
-      status: 'sold',
-      buyer_email: email,
-      sold_at: new Date().toISOString(),
-      transaction_id: txId,
-    })
-    .in('id', ticketIds);
-
-  if (updateError) {
-    console.error('Error marking tickets sold:', updateError.message);
-    return { ok: false, error: 'Failed to assign tickets' };
-  }
-
-  return { ok: true, ticketNumbers };
+  return { ok: true, ticketNumbers: assigned };
 }
 
 // Send ticket email
-async function sendTicketEmail(email, ticketNumbers, amount) {
+async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
   const ticketList = ticketNumbers.map(n => `<li style="font-size:18px;padding:4px 0;"><strong>${n}</strong></li>`).join('');
 
   try {
     const { data, error } = await resend.emails.send({
-      from: 'TTH Podcast Series <tickets@resend.dev>',
+      from: 'TTH Podcast Series <onboarding@resend.dev>',
       replyTo: 'tthpodcastseries@gmail.com',
       to: email,
       subject: 'Your 50/50 Draw Ticket Numbers - An Evening for Sara J',
@@ -202,7 +257,7 @@ async function sendTicketEmail(email, ticketNumbers, amount) {
             <p style="color:#929292;margin:0;">An Evening for Sara J</p>
           </div>
           <div style="background:#1a0045;padding:24px;margin:0 16px;border-radius:8px;">
-            <p style="margin:0 0 12px;color:#d9d9d9;">Hey! Here are your 50/50 draw ticket numbers:</p>
+            <p style="margin:0 0 12px;color:#d9d9d9;">Hey${buyerName ? ' ' + buyerName : ''}! Here are your 50/50 draw ticket numbers:</p>
             <ul style="list-style:none;padding:0;margin:16px 0;text-align:center;color:#22c55e;">
               ${ticketList}
             </ul>
@@ -234,17 +289,17 @@ async function sendTicketEmail(email, ticketNumbers, amount) {
 }
 
 // After a successful payment, handle 50/50 ticket assignment + email
-async function handle5050IfNeeded(description, email, amount, txId) {
+async function handle5050IfNeeded(description, email, amount, txId, buyerInfo = {}) {
   const ticketCount = count5050Tickets(description);
   if (ticketCount === 0 || !email) return { assigned: false };
 
-  const result = await assignTickets(ticketCount, email, txId);
+  const result = await assignTickets(ticketCount, email, txId, buyerInfo);
   if (!result.ok) {
     console.error('Ticket assignment failed:', result.error);
     return { assigned: false, error: result.error };
   }
 
-  const emailSent = await sendTicketEmail(email, result.ticketNumbers, amount);
+  const emailSent = await sendTicketEmail(email, result.ticketNumbers, amount, buyerInfo.name);
   return {
     assigned: true,
     ticketNumbers: result.ticketNumbers,
@@ -267,6 +322,24 @@ app.get('/api/tickets-5050/available', async (req, res) => {
   }
 });
 
+// --- API: Get 50/50 jackpot (sold count * $5 / 2) ---
+app.get('/api/tickets-5050/jackpot', async (req, res) => {
+  try {
+    const { count, error } = await supabase
+      .from('tickets_5050')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'sold');
+    if (error) throw error;
+    const soldCount = count || 0;
+    const totalSales = soldCount * 5;
+    const jackpot = totalSales / 2;
+    res.json({ soldCount, totalSales, jackpot });
+  } catch (err) {
+    console.error('Error calculating jackpot:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get current inventory
 app.get('/api/inventory', async (req, res) => {
   try {
@@ -284,13 +357,14 @@ app.get('/api/config', (req, res) => {
     applicationId: process.env.SQUARE_APPLICATION_ID,
     locationId: process.env.SQUARE_LOCATION_ID,
     environment: process.env.SQUARE_ENVIRONMENT || 'sandbox',
+    apiKey: process.env.POS_API_KEY || '',
   });
 });
 
 // Create a payment using Square
-app.post('/api/create-payment', async (req, res) => {
+app.post('/api/create-payment', requireAuth, async (req, res) => {
   try {
-    const { sourceId, amount, description, method, email } = req.body;
+    const { sourceId, amount, description, method, email, buyerName, buyerPhone, newsletterOptIn } = req.body;
     const amountCents = Math.round(amount * 100);
 
     if (amountCents < 100) {
@@ -307,8 +381,8 @@ app.post('/api/create-payment', async (req, res) => {
         .from('tickets_5050')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'available');
-      if (count < ticketCount) {
-        return res.status(400).json({ error: `Only ${count} 50/50 tickets remaining` });
+      if ((count ?? 0) < ticketCount) {
+        return res.status(400).json({ error: `Only ${count ?? 0} 50/50 tickets remaining` });
       }
     }
 
@@ -348,7 +422,7 @@ app.post('/api/create-payment', async (req, res) => {
     await decrementInventory(description);
 
     // Handle 50/50 ticket assignment + email
-    const ticketResult = await handle5050IfNeeded(description, email, amount, txId);
+    const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
 
     res.json({
       paymentId: txId,
@@ -364,9 +438,9 @@ app.post('/api/create-payment', async (req, res) => {
 });
 
 // Record a cash payment
-app.post('/api/cash-payment', async (req, res) => {
+app.post('/api/cash-payment', requireAuth, async (req, res) => {
   try {
-    const { amount, description, email } = req.body;
+    const { amount, description, email, buyerName, buyerPhone, newsletterOptIn } = req.body;
     if (!amount || amount < 0.01) {
       return res.status(400).json({ error: 'Invalid amount' });
     }
@@ -381,8 +455,8 @@ app.post('/api/cash-payment', async (req, res) => {
         .from('tickets_5050')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'available');
-      if (count < ticketCount) {
-        return res.status(400).json({ error: `Only ${count} 50/50 tickets remaining` });
+      if ((count ?? 0) < ticketCount) {
+        return res.status(400).json({ error: `Only ${count ?? 0} 50/50 tickets remaining` });
       }
     }
 
@@ -395,7 +469,7 @@ app.post('/api/cash-payment', async (req, res) => {
     // Decrement inventory
     await decrementInventory(description);
 
-    const txId = 'cash_' + Date.now();
+    const txId = 'cash_' + Date.now() + '-' + Math.random().toString(36).slice(2);
 
     await saveTransaction({
       tx_id: txId,
@@ -407,7 +481,7 @@ app.post('/api/cash-payment', async (req, res) => {
     });
 
     // Handle 50/50 ticket assignment + email
-    const ticketResult = await handle5050IfNeeded(description, email, amount, txId);
+    const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
 
     res.json({
       status: 'succeeded',
@@ -436,34 +510,17 @@ app.get('/api/report', async (req, res) => {
   try {
     const txns = await loadTransactions();
     const succeeded = txns.filter((t) => t.status === 'succeeded' || t.status === 'completed');
+    const refunded = txns.filter((t) => t.status === 'refunded');
 
     const totalSales = succeeded.length;
     const totalRevenue = succeeded.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const refundedTotal = refunded.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const netRevenue = totalRevenue - refundedTotal;
 
     const cashTxns = succeeded.filter((t) => t.method === 'cash');
     const cardTxns = succeeded.filter((t) => t.method === 'card');
     const cashTotal = cashTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const cardTotal = cardTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-
-    const byProduct = {};
-    for (const t of succeeded) {
-      const items = t.description.split(', ');
-      for (const item of items) {
-        const match = item.match(/^(.+?)\s*\((\d+)\)$/);
-        if (match) {
-          const name = match[1].trim();
-          const qty = parseInt(match[2]);
-          if (!byProduct[name]) byProduct[name] = { count: 0, revenue: 0 };
-          byProduct[name].count += qty;
-        } else {
-          if (!byProduct[item]) byProduct[item] = { count: 0, revenue: 0 };
-          byProduct[item].count += 1;
-        }
-      }
-      const key = t.description;
-      if (!byProduct[key]) byProduct[key] = { count: 0, revenue: 0 };
-      byProduct[key].revenue += parseFloat(t.amount);
-    }
 
     // Get 50/50 ticket stats
     const { count: ticketsSold } = await supabase
@@ -475,13 +532,20 @@ app.get('/api/report', async (req, res) => {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'available');
 
+    // Include all non-failed transactions (succeeded + completed + refunded) for display
+    const allDisplayable = txns.filter((t) =>
+      t.status === 'succeeded' || t.status === 'completed' || t.status === 'refunded'
+    );
+
     res.json({
       totalSales,
       totalRevenue: totalRevenue.toFixed(2),
+      netRevenue: netRevenue.toFixed(2),
+      refunds: { count: refunded.length, total: refundedTotal.toFixed(2) },
       cash: { count: cashTxns.length, total: cashTotal.toFixed(2) },
       card: { count: cardTxns.length, total: cardTotal.toFixed(2) },
       tickets5050: { sold: ticketsSold || 0, available: ticketsAvailable || 0 },
-      transactions: succeeded,
+      transactions: allDisplayable,
     });
   } catch (err) {
     console.error('Error generating report:', err.message);
@@ -489,31 +553,115 @@ app.get('/api/report', async (req, res) => {
   }
 });
 
+// Restore inventory from a transaction description
+async function restoreInventory(description) {
+  const inv = await loadInventory();
+  const items = description.split(', ');
+  for (const item of items) {
+    const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+    if (match) {
+      const name = match[1].trim();
+      const qty = parseInt(match[2]);
+      const key = name === 'Door Tickets' ? 'Door Ticket' : name;
+      if (key in inv) {
+        await saveInventoryItem(key, inv[key] + qty);
+      }
+    }
+  }
+}
+
 // Refund a payment
-app.post('/api/refund', async (req, res) => {
+app.post('/api/refund', requireAuth, async (req, res) => {
   try {
     const { paymentId, amount } = req.body;
-    const idempotencyKey = `refund-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-    const refundRequest = {
-      paymentId,
-      idempotencyKey,
-      reason: 'Requested by seller',
-    };
+    // Look up the transaction in Supabase
+    const { data: txData } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('tx_id', paymentId)
+      .single();
 
-    if (amount) {
-      refundRequest.amountMoney = {
-        amount: BigInt(Math.round(amount * 100)),
-        currency: 'CAD',
-      };
+    // Prevent double refund
+    if (txData && txData.status === 'refunded') {
+      return res.status(400).json({ error: 'This transaction has already been refunded' });
     }
 
-    const response = await squareClient.refunds.refundPayment(refundRequest);
-    res.json({ status: response.refund.status });
+    // For card payments, process refund through Square
+    if (!paymentId.startsWith('cash_')) {
+      const idempotencyKey = `refund-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      const refundRequest = {
+        paymentId,
+        idempotencyKey,
+        reason: 'Requested by seller',
+      };
+
+      if (amount) {
+        refundRequest.amountMoney = {
+          amount: BigInt(Math.round(amount * 100)),
+          currency: 'CAD',
+        };
+      }
+
+      await squareClient.refunds.refundPayment(refundRequest);
+    }
+
+    // Update transaction status in Supabase
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update({ status: 'refunded' })
+      .eq('tx_id', paymentId);
+    if (updateError) console.error('Error updating transaction status:', updateError.message);
+
+    // Restore inventory counts
+    if (txData && txData.description) {
+      await restoreInventory(txData.description);
+    }
+
+    // Release 50/50 tickets back to available
+    const { error: ticketError } = await supabase
+      .from('tickets_5050')
+      .update({ status: 'available', buyer_email: null, buyer_name: null, buyer_phone: null, newsletter_opt_in: false, sold_at: null, transaction_id: null })
+      .eq('transaction_id', paymentId);
+    if (ticketError) console.error('Error releasing 50/50 tickets:', ticketError.message);
+
+    res.json({ status: 'refunded' });
   } catch (err) {
     console.error('Error creating refund:', err);
     const message = err.errors ? err.errors.map(e => e.detail).join(', ') : err.message;
     res.status(500).json({ error: message });
+  }
+});
+
+// --- 50/50 Draw ---
+app.post('/api/draw-5050', requireAuth, async (req, res) => {
+  try {
+    // Get all sold tickets
+    const { data: soldTickets, error } = await supabase
+      .from('tickets_5050')
+      .select('ticket_number, buyer_email, buyer_name, buyer_phone')
+      .eq('status', 'sold');
+
+    if (error) throw error;
+
+    if (!soldTickets || soldTickets.length === 0) {
+      return res.status(400).json({ error: 'No sold tickets to draw from' });
+    }
+
+    // Pick one at random
+    const winner = soldTickets[Math.floor(Math.random() * soldTickets.length)];
+
+    res.json({
+      ticketNumber: winner.ticket_number,
+      email: winner.buyer_email,
+      name: winner.buyer_name,
+      phone: winner.buyer_phone,
+      totalSold: soldTickets.length,
+    });
+  } catch (err) {
+    console.error('Error running 50/50 draw:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
