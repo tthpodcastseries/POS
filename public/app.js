@@ -377,6 +377,10 @@
 
     document.getElementById('saveInventoryBtn').addEventListener('click', saveInventoryEdits);
 
+    // --- Reallocate buttons ---
+    document.getElementById('reallocateEBtoGA').addEventListener('click', () => reallocateTickets('Early Bird Ticket', 'GA Ticket'));
+    document.getElementById('reallocateGAtoDoor').addEventListener('click', () => reallocateTickets('GA Ticket', 'Door Ticket'));
+
     // --- 50/50 Draw (admin password validated server-side) ---
     document.getElementById('drawBtn').addEventListener('click', async () => {
       const password = prompt('Enter admin password:');
@@ -999,6 +1003,31 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Save Changes';
+    }
+  }
+
+  async function reallocateTickets(from, to) {
+    const status = document.getElementById('reallocate-status');
+    status.textContent = '';
+    if (!confirm(`Move ALL remaining ${from} tickets to ${to}?`)) return;
+    try {
+      const res = await authPost('/api/inventory/reallocate', { from, to });
+      const data = await res.json();
+      if (data.error) {
+        status.style.color = 'var(--danger)';
+        status.textContent = data.error;
+      } else {
+        status.style.color = 'var(--success)';
+        status.textContent = `Moved ${data.moved} tickets: ${from} → ${to}`;
+        // Refresh the editor inputs
+        document.getElementById('invEarlyBird').value = data.inventory['Early Bird Ticket'] ?? 0;
+        document.getElementById('invGA').value = data.inventory['GA Ticket'] ?? 0;
+        document.getElementById('invDoor').value = data.inventory['Door Ticket'] ?? 0;
+        refreshInventory();
+      }
+    } catch (err) {
+      status.style.color = 'var(--danger)';
+      status.textContent = 'Error: ' + err.message;
     }
   }
 

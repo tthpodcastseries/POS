@@ -106,8 +106,9 @@ async function saveInventoryItem(name, remaining) {
   if (error) console.error('Error saving inventory:', error.message);
 }
 
-async function checkInventory(description) {
-  const inv = await loadInventory();
+// Aggregate quantities per product from a description string
+function aggregateQuantities(description) {
+  const totals = {};
   const items = description.split(', ');
   for (const item of items) {
     const match = item.match(/^(.+?)\s*\((\d+)\)$/);
@@ -115,11 +116,18 @@ async function checkInventory(description) {
       const name = match[1].trim();
       const qty = parseInt(match[2]);
       const key = name === 'Door Tickets' ? 'Door Ticket' : name;
-      if (key in inv) {
-        if (qty > inv[key]) {
-          return { ok: false, error: `Only ${inv[key]} ${key} remaining` };
-        }
-      }
+      totals[key] = (totals[key] || 0) + qty;
+    }
+  }
+  return totals;
+}
+
+async function checkInventory(description) {
+  const inv = await loadInventory();
+  const totals = aggregateQuantities(description);
+  for (const [key, qty] of Object.entries(totals)) {
+    if (key in inv && qty > inv[key]) {
+      return { ok: false, error: `Only ${inv[key]} ${key} remaining` };
     }
   }
   return { ok: true };
@@ -127,17 +135,11 @@ async function checkInventory(description) {
 
 async function decrementInventory(description) {
   const inv = await loadInventory();
-  const items = description.split(', ');
-  for (const item of items) {
-    const match = item.match(/^(.+?)\s*\((\d+)\)$/);
-    if (match) {
-      const name = match[1].trim();
-      const qty = parseInt(match[2]);
-      const key = name === 'Door Tickets' ? 'Door Ticket' : name;
-      if (key in inv) {
-        const newCount = Math.max(0, inv[key] - qty);
-        await saveInventoryItem(key, newCount);
-      }
+  const totals = aggregateQuantities(description);
+  for (const [key, qty] of Object.entries(totals)) {
+    if (key in inv) {
+      const newCount = Math.max(0, inv[key] - qty);
+      await saveInventoryItem(key, newCount);
     }
   }
 }
@@ -158,6 +160,30 @@ app.post('/api/inventory/update', requireAuth, async (req, res) => {
     res.json(inv);
   } catch (err) {
     console.error('Error updating inventory:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reallocate unsold tickets from one tier to another
+app.post('/api/inventory/reallocate', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.body; // e.g. { from: 'Early Bird Ticket', to: 'GA Ticket' }
+    const validTiers = ['Early Bird Ticket', 'GA Ticket', 'Door Ticket'];
+    if (!validTiers.includes(from) || !validTiers.includes(to) || from === to) {
+      return res.status(400).json({ error: 'Invalid reallocation' });
+    }
+    const inv = await loadInventory();
+    const moveQty = inv[from] || 0;
+    if (moveQty === 0) {
+      return res.status(400).json({ error: `No ${from} tickets to reallocate` });
+    }
+    await saveInventoryItem(from, 0);
+    await saveInventoryItem(to, (inv[to] || 0) + moveQty);
+    const updated = await loadInventory();
+    console.log(`Reallocated ${moveQty} tickets: ${from} -> ${to}`);
+    res.json({ moved: moveQty, from, to, inventory: updated });
+  } catch (err) {
+    console.error('Error reallocating inventory:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -635,16 +661,10 @@ app.get('/api/report', requireAuth, async (req, res) => {
 // Restore inventory from a transaction description
 async function restoreInventory(description) {
   const inv = await loadInventory();
-  const items = description.split(', ');
-  for (const item of items) {
-    const match = item.match(/^(.+?)\s*\((\d+)\)$/);
-    if (match) {
-      const name = match[1].trim();
-      const qty = parseInt(match[2]);
-      const key = name === 'Door Tickets' ? 'Door Ticket' : name;
-      if (key in inv) {
-        await saveInventoryItem(key, inv[key] + qty);
-      }
+  const totals = aggregateQuantities(description);
+  for (const [key, qty] of Object.entries(totals)) {
+    if (key in inv) {
+      await saveInventoryItem(key, inv[key] + qty);
     }
   }
 }

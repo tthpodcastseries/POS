@@ -982,6 +982,19 @@ main {
   color: var(--success);
 }
 
+.reallocate-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.reallocate-section h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text);
+  text-align: center;
+}
+
 /* Refund button in history */
 .refund-btn {
   background: none;
