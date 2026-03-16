@@ -32,21 +32,44 @@
       <!-- Raffle Tickets -->
       <div class="product-section">
         <div class="section-title">Raffle Tickets</div>
-        <div class="product-grid">
+        <div class="product-grid grid-4">
           <button class="product-btn" data-product="Raffle Ticket" data-qty="1" data-price="5">
-            <span class="qty">1 ticket</span>
+            <span class="qty">1</span>
             <span class="price">$5</span>
           </button>
           <button class="product-btn" data-product="Raffle Tickets" data-qty="5" data-price="20">
-            <span class="qty">5 tickets</span>
+            <span class="qty">5</span>
             <span class="price">$20</span>
           </button>
           <button class="product-btn" data-product="Raffle Tickets" data-qty="15" data-price="50">
-            <span class="qty">15 tickets</span>
+            <span class="qty">15</span>
             <span class="price">$50</span>
           </button>
           <button class="product-btn" data-product="Raffle Tickets" data-qty="35" data-price="100">
-            <span class="qty">35 tickets</span>
+            <span class="qty">35</span>
+            <span class="price">$100</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 50/50 Tickets -->
+      <div class="product-section">
+        <div class="section-title">50/50 Tickets</div>
+        <div class="product-grid grid-4">
+          <button class="product-btn" data-product="50/50 Ticket" data-qty="1" data-price="5">
+            <span class="qty">1</span>
+            <span class="price">$5</span>
+          </button>
+          <button class="product-btn" data-product="50/50 Tickets" data-qty="5" data-price="20">
+            <span class="qty">5</span>
+            <span class="price">$20</span>
+          </button>
+          <button class="product-btn" data-product="50/50 Tickets" data-qty="15" data-price="50">
+            <span class="qty">15</span>
+            <span class="price">$50</span>
+          </button>
+          <button class="product-btn" data-product="50/50 Tickets" data-qty="35" data-price="100">
+            <span class="qty">35</span>
             <span class="price">$100</span>
           </button>
         </div>
@@ -136,6 +159,20 @@
     </div>
 
 
+    <!-- Email modal (for 50/50 tickets) -->
+    <div id="emailModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Buyer Email</h2>
+          <button id="closeEmail" class="close-btn">&times;</button>
+        </div>
+        <p class="email-note">Email required for 50/50 ticket numbers</p>
+        <input type="email" id="buyerEmail" class="email-input" placeholder="email@example.com" autocomplete="email" inputmode="email">
+        <div id="email-errors" class="error-text"></div>
+        <button id="confirmEmailBtn" class="btn btn-primary btn-full">Continue to Payment</button>
+      </div>
+    </div>
+
     <!-- Success overlay -->
     <div id="successOverlay" class="overlay hidden">
       <div class="success-content">
@@ -143,6 +180,11 @@
         <h2>Payment Successful</h2>
         <p id="successAmount"></p>
         <p id="successMethod" class="success-method"></p>
+        <div id="successTickets" class="success-tickets" style="display:none">
+          <p class="tickets-label">50/50 Ticket Numbers:</p>
+          <div id="ticketNumberList" class="ticket-numbers"></div>
+          <p id="emailSentNote" class="email-sent-note"></p>
+        </div>
         <button id="newSaleBtn" class="btn btn-primary btn-full">New Sale</button>
       </div>
     </div>

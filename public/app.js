@@ -3,10 +3,11 @@
   let cart = [];
   let doorQty = 1;
   let appConfig = {};
+  let pendingPaymentType = null; // 'card' or 'cash'
+  let buyerEmail = '';
 
   // --- Init ---
   async function init() {
-    // Bind buttons first so the UI is always responsive
     bindEvents();
 
     try {
@@ -26,14 +27,12 @@
 
       payments = window.Square.payments(appConfig.applicationId, appConfig.locationId);
 
-      // Initialize card payment
       card = await payments.card();
       await card.attach('#card-container');
 
       refreshInventory();
     } catch (err) {
       console.error('Square init error:', err);
-      // Show error in card container so user knows
       const container = document.getElementById('card-container');
       if (container) {
         container.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;">Card form failed to load: ' + (err.message || err) + '. Try refreshing.</p>';
@@ -55,6 +54,13 @@
     });
   }
 
+  // --- Check if cart has 50/50 tickets ---
+  function cartHas5050() {
+    return cart.some(item =>
+      item.product === '50/50 Ticket' || item.product === '50/50 Tickets'
+    );
+  }
+
   // --- Cart ---
   function addToCart(product, qty, price) {
     cart.push({ product, qty, price, id: Date.now() });
@@ -68,6 +74,7 @@
 
   function clearCart() {
     cart = [];
+    buyerEmail = '';
     renderCart();
   }
 
@@ -165,12 +172,17 @@
     // Clear cart
     document.getElementById('clearCartBtn').addEventListener('click', clearCart);
 
-    // --- Card ---
+    // --- Card button ---
     document.getElementById('chargeCardBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 1) return;
-      document.getElementById('modalAmount').textContent = total.toFixed(2);
-      document.getElementById('paymentModal').classList.remove('hidden');
+      if (cartHas5050()) {
+        pendingPaymentType = 'card';
+        showEmailModal();
+      } else {
+        buyerEmail = '';
+        openCardModal();
+      }
     });
 
     document.getElementById('closePayment').addEventListener('click', () => {
@@ -179,12 +191,17 @@
 
     document.getElementById('payBtn').addEventListener('click', handleCardPayment);
 
-    // --- Cash ---
+    // --- Cash button ---
     document.getElementById('cashBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 0.01) return;
-      document.getElementById('cashAmount').textContent = total.toFixed(2);
-      document.getElementById('cashModal').classList.remove('hidden');
+      if (cartHas5050()) {
+        pendingPaymentType = 'cash';
+        showEmailModal();
+      } else {
+        buyerEmail = '';
+        openCashModal();
+      }
     });
 
     document.getElementById('closeCash').addEventListener('click', () => {
@@ -192,6 +209,19 @@
     });
 
     document.getElementById('confirmCashBtn').addEventListener('click', handleCashPayment);
+
+    // --- Email modal ---
+    document.getElementById('closeEmail').addEventListener('click', () => {
+      document.getElementById('emailModal').classList.add('hidden');
+      pendingPaymentType = null;
+    });
+
+    document.getElementById('confirmEmailBtn').addEventListener('click', handleEmailConfirm);
+
+    // Allow Enter key in email input
+    document.getElementById('buyerEmail').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleEmailConfirm();
+    });
 
     // --- New sale ---
     document.getElementById('newSaleBtn').addEventListener('click', () => {
@@ -211,6 +241,43 @@
     });
   }
 
+  // --- Email Modal ---
+  function showEmailModal() {
+    document.getElementById('buyerEmail').value = '';
+    document.getElementById('email-errors').textContent = '';
+    document.getElementById('emailModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('buyerEmail').focus(), 300);
+  }
+
+  function handleEmailConfirm() {
+    const email = document.getElementById('buyerEmail').value.trim();
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      document.getElementById('email-errors').textContent = 'Please enter a valid email address';
+      return;
+    }
+    buyerEmail = email;
+    document.getElementById('emailModal').classList.add('hidden');
+
+    if (pendingPaymentType === 'card') {
+      openCardModal();
+    } else if (pendingPaymentType === 'cash') {
+      openCashModal();
+    }
+    pendingPaymentType = null;
+  }
+
+  function openCardModal() {
+    const total = getTotal();
+    document.getElementById('modalAmount').textContent = total.toFixed(2);
+    document.getElementById('paymentModal').classList.remove('hidden');
+  }
+
+  function openCashModal() {
+    const total = getTotal();
+    document.getElementById('cashAmount').textContent = total.toFixed(2);
+    document.getElementById('cashModal').classList.remove('hidden');
+  }
+
   // --- Card Payment ---
   async function handleCardPayment() {
     const total = getTotal();
@@ -222,7 +289,6 @@
 
     if (!card) {
       document.getElementById('card-errors').textContent = 'Card form not ready. Please wait a moment and try again.';
-      // Try to re-initialize
       try {
         if (payments) {
           card = await payments.card();
@@ -258,6 +324,7 @@
           amount: total,
           description: getDescription(),
           method: 'card',
+          email: buyerEmail || undefined,
         }),
       });
       const data = await res.json();
@@ -269,7 +336,7 @@
 
       document.getElementById('paymentModal').classList.add('hidden');
       refreshInventory();
-      showSuccess(total, 'Card');
+      showSuccess(total, 'Card', data.ticketNumbers, data.emailSent);
     } catch (err) {
       document.getElementById('card-errors').textContent = err.message;
     } finally {
@@ -289,14 +356,18 @@
       const res = await fetch('/api/cash-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: total, description: getDescription() }),
+        body: JSON.stringify({
+          amount: total,
+          description: getDescription(),
+          email: buyerEmail || undefined,
+        }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
       document.getElementById('cashModal').classList.add('hidden');
       refreshInventory();
-      showSuccess(total, 'Cash');
+      showSuccess(total, 'Cash', data.ticketNumbers, data.emailSent);
     } catch (err) {
       alert('Error recording cash payment: ' + err.message);
     } finally {
@@ -306,9 +377,26 @@
   }
 
   // --- Success ---
-  function showSuccess(amount, method) {
+  function showSuccess(amount, method, ticketNumbers, emailSent) {
     document.getElementById('successAmount').textContent = '$' + amount.toFixed(2);
     document.getElementById('successMethod').textContent = method ? 'Paid via ' + method : '';
+
+    const ticketsDiv = document.getElementById('successTickets');
+    const ticketListDiv = document.getElementById('ticketNumberList');
+    const emailNote = document.getElementById('emailSentNote');
+
+    if (ticketNumbers && ticketNumbers.length > 0) {
+      ticketListDiv.innerHTML = ticketNumbers
+        .map(n => `<span class="ticket-number">${n}</span>`)
+        .join('');
+      emailNote.textContent = emailSent
+        ? 'Ticket numbers emailed to ' + buyerEmail
+        : 'Email could not be sent - please note these numbers';
+      ticketsDiv.style.display = 'block';
+    } else {
+      ticketsDiv.style.display = 'none';
+    }
+
     document.getElementById('successOverlay').classList.remove('hidden');
     clearCart();
   }
@@ -359,6 +447,8 @@
       const res = await fetch('/api/report');
       const data = await res.json();
 
+      const tickets5050 = data.tickets5050 || { sold: 0, available: 0 };
+
       document.getElementById('reportContent').innerHTML = `
         <div class="report-hero">
           <div class="report-total-label">Total Revenue</div>
@@ -386,6 +476,15 @@
               <span class="report-card-count">${data.card.count} sales</span>
             </div>
             <span class="report-card-amount">$${data.card.total}</span>
+          </div>
+          <div class="report-card">
+            <div class="report-card-icon ticket-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><circle cx="12" cy="15" r="1"/></svg>
+            </div>
+            <div class="report-card-info">
+              <span class="report-card-label">50/50 Tickets</span>
+              <span class="report-card-count">${tickets5050.sold} sold / ${tickets5050.available} remaining</span>
+            </div>
           </div>
         </div>
 
@@ -446,14 +545,12 @@
           el.textContent = remaining + ' left';
           el.classList.toggle('sold-out', remaining <= 0);
         }
-        // Disable buttons for sold-out items
         const btn = document.querySelector(`[data-product="${product}"]`);
         if (btn) {
           btn.disabled = remaining <= 0;
           if (remaining <= 0) btn.classList.add('sold-out-btn');
           else btn.classList.remove('sold-out-btn');
         }
-        // Handle door button separately
         if (product === 'Door Ticket') {
           const doorBtn = document.getElementById('addDoorTicket');
           if (doorBtn) {
@@ -468,7 +565,6 @@
     }
   }
 
-  // Refresh inventory every 10 seconds so all devices stay in sync
   setInterval(refreshInventory, 10000);
 
   // --- Start ---

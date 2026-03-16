@@ -105,6 +105,10 @@ main {
   margin-bottom: 4px;
 }
 
+.product-grid.grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .product-btn {
   background: var(--light-grey);
   border: 1px solid var(--mid-grey);
@@ -778,4 +782,81 @@ main {
 
 .report-transactions {
   margin-bottom: 20px;
+}
+
+/* Email input modal */
+.email-note {
+  text-align: center;
+  color: var(--light-grey);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.email-input {
+  width: 100%;
+  padding: 14px 16px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 16px;
+  background: var(--black);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: var(--white);
+  margin-bottom: 12px;
+  outline: none;
+}
+
+.email-input:focus {
+  border-color: var(--light-grey);
+}
+
+.email-input::placeholder {
+  color: var(--mid-grey);
+}
+
+/* Success ticket display */
+.success-tickets {
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 0 0 24px;
+}
+
+.tickets-label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--mid-grey) !important;
+  margin-bottom: 8px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ticket-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.ticket-number {
+  background: rgba(34,197,94,0.15);
+  color: #22c55e;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.email-sent-note {
+  font-size: 12px !important;
+  color: var(--mid-grey) !important;
+  margin: 4px 0 0 !important;
+}
+
+/* 50/50 ticket stats in report */
+.ticket-icon {
+  background: rgba(234,179,8,0.2);
+  color: #facc15;
 }
