@@ -665,6 +665,44 @@ app.post('/api/draw-5050', requireAuth, async (req, res) => {
   }
 });
 
+// --- Factory Reset (for testing) ---
+app.post('/api/reset', requireAuth, async (req, res) => {
+  try {
+    // 1. Delete all transactions
+    const { error: txErr } = await supabase
+      .from('transactions')
+      .delete()
+      .neq('id', 0); // delete all rows
+    if (txErr) console.error('Reset transactions error:', txErr.message);
+
+    // 2. Reset all 50/50 tickets back to available
+    const { error: ticketErr } = await supabase
+      .from('tickets_5050')
+      .update({
+        status: 'available',
+        buyer_email: null,
+        buyer_name: null,
+        buyer_phone: null,
+        newsletter_opt_in: false,
+        sold_at: null,
+        transaction_id: null,
+      })
+      .neq('id', 0); // update all rows
+    if (ticketErr) console.error('Reset tickets error:', ticketErr.message);
+
+    // 3. Reset inventory to defaults
+    for (const [name, remaining] of Object.entries(DEFAULT_INVENTORY)) {
+      await saveInventoryItem(name, remaining);
+    }
+
+    console.log('Factory reset completed');
+    res.json({ status: 'reset', inventory: DEFAULT_INVENTORY });
+  } catch (err) {
+    console.error('Error during reset:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`POS server running on http://localhost:${PORT}`);

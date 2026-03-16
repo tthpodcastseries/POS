@@ -388,6 +388,28 @@
     });
     document.getElementById('runDrawBtn').addEventListener('click', runDraw);
     document.getElementById('redrawBtn').addEventListener('click', runDraw);
+
+    // Factory Reset
+    document.getElementById('resetBtn').addEventListener('click', async () => {
+      const confirmed = await showConfirm(
+        'Factory Reset',
+        'This will delete ALL transactions, reset ALL 50/50 tickets to available, and restore inventory to defaults. This cannot be undone.',
+        'Reset Everything',
+        true
+      );
+      if (!confirmed) return;
+      try {
+        const res = await authPost('/api/reset', {});
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Reset failed');
+        showToast('Factory reset complete', 'success');
+        document.getElementById('drawResult').classList.add('hidden');
+        document.getElementById('redrawBtn').classList.add('hidden');
+        loadJackpot();
+      } catch (err) {
+        showToast('Reset failed: ' + err.message);
+      }
+    });
   }
 
   // --- Buyer Info Modal ---
