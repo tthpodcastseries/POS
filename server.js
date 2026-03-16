@@ -1,9 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
 const { SquareClient, SquareEnvironment } = require('square');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 app.use(cors());
@@ -20,80 +19,85 @@ const squareClient = new SquareClient({
 
 const locationId = process.env.SQUARE_LOCATION_ID;
 
-// --- Local transaction log (persists cash + card sales) ---
-const TX_FILE = path.join(__dirname, 'transactions.json');
+// Supabase client setup
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
-function loadTransactions() {
-  try {
-    if (fs.existsSync(TX_FILE)) {
-      return JSON.parse(fs.readFileSync(TX_FILE, 'utf8'));
-    }
-  } catch (e) {
-    console.error('Error reading transactions file:', e.message);
+// --- Transactions (Supabase) ---
+
+async function loadTransactions() {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .order('created', { ascending: false });
+  if (error) {
+    console.error('Error loading transactions:', error.message);
+    return [];
   }
-  return [];
+  return data;
 }
 
-function saveTransaction(tx) {
-  const txns = loadTransactions();
-  txns.unshift(tx);
-  fs.writeFileSync(TX_FILE, JSON.stringify(txns, null, 2));
+async function saveTransaction(tx) {
+  const { error } = await supabase.from('transactions').insert(tx);
+  if (error) console.error('Error saving transaction:', error.message);
 }
 
-// --- Inventory management (shared across all devices) ---
-const INV_FILE = path.join(__dirname, 'inventory.json');
+// --- Inventory (Supabase) ---
 
 const DEFAULT_INVENTORY = {
   'Early Bird Ticket': 20,
   'GA Ticket': 65,
   'Door Ticket': 15,
-  'Door Tickets': 15, // alias for multi-qty
 };
 
-function loadInventory() {
-  try {
-    if (fs.existsSync(INV_FILE)) {
-      return JSON.parse(fs.readFileSync(INV_FILE, 'utf8'));
-    }
-  } catch (e) {
-    console.error('Error reading inventory file:', e.message);
+async function loadInventory() {
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('*');
+  if (error) {
+    console.error('Error loading inventory:', error.message);
+    return { ...DEFAULT_INVENTORY };
   }
-  // First run - create from defaults
-  fs.writeFileSync(INV_FILE, JSON.stringify(DEFAULT_INVENTORY, null, 2));
-  return { ...DEFAULT_INVENTORY };
+  if (!data || data.length === 0) {
+    // First run - seed defaults
+    const rows = Object.entries(DEFAULT_INVENTORY).map(([name, remaining]) => ({
+      name,
+      remaining,
+    }));
+    await supabase.from('inventory').insert(rows);
+    return { ...DEFAULT_INVENTORY };
+  }
+  const inv = {};
+  for (const row of data) {
+    inv[row.name] = row.remaining;
+  }
+  return inv;
 }
 
-function saveInventory(inv) {
-  fs.writeFileSync(INV_FILE, JSON.stringify(inv, null, 2));
+async function saveInventoryItem(name, remaining) {
+  const { error } = await supabase
+    .from('inventory')
+    .update({ remaining })
+    .eq('name', name);
+  if (error) console.error('Error saving inventory:', error.message);
 }
 
-// Keep Door Ticket and Door Tickets in sync (they share the same pool)
-function getDoorRemaining(inv) {
-  return Math.min(
-    inv['Door Ticket'] ?? 0,
-    inv['Door Tickets'] ?? 0
-  );
-}
-
-function setDoorRemaining(inv, count) {
-  inv['Door Ticket'] = count;
-  inv['Door Tickets'] = count;
-}
-
-// Check if inventory is available for cart items, returns { ok, error }
-function checkInventory(description) {
-  const inv = loadInventory();
+// Check if inventory is available for cart items
+async function checkInventory(description) {
+  const inv = await loadInventory();
   const items = description.split(', ');
   for (const item of items) {
     const match = item.match(/^(.+?)\s*\((\d+)\)$/);
     if (match) {
       const name = match[1].trim();
       const qty = parseInt(match[2]);
-      if (name in inv) {
-        const available = (name === 'Door Ticket' || name === 'Door Tickets')
-          ? getDoorRemaining(inv) : inv[name];
-        if (qty > available) {
-          return { ok: false, error: `Only ${available} ${name} remaining` };
+      // Map "Door Tickets" alias to "Door Ticket"
+      const key = name === 'Door Tickets' ? 'Door Ticket' : name;
+      if (key in inv) {
+        if (qty > inv[key]) {
+          return { ok: false, error: `Only ${inv[key]} ${key} remaining` };
         }
       }
     }
@@ -102,32 +106,32 @@ function checkInventory(description) {
 }
 
 // Decrement inventory after successful payment
-function decrementInventory(description) {
-  const inv = loadInventory();
+async function decrementInventory(description) {
+  const inv = await loadInventory();
   const items = description.split(', ');
   for (const item of items) {
     const match = item.match(/^(.+?)\s*\((\d+)\)$/);
     if (match) {
       const name = match[1].trim();
       const qty = parseInt(match[2]);
-      if (name === 'Door Ticket' || name === 'Door Tickets') {
-        setDoorRemaining(inv, getDoorRemaining(inv) - qty);
-      } else if (name in inv) {
-        inv[name] = Math.max(0, inv[name] - qty);
+      const key = name === 'Door Tickets' ? 'Door Ticket' : name;
+      if (key in inv) {
+        const newCount = Math.max(0, inv[key] - qty);
+        await saveInventoryItem(key, newCount);
       }
     }
   }
-  saveInventory(inv);
 }
 
 // Get current inventory
-app.get('/api/inventory', (req, res) => {
-  const inv = loadInventory();
-  res.json({
-    'Early Bird Ticket': inv['Early Bird Ticket'] ?? 0,
-    'GA Ticket': inv['GA Ticket'] ?? 0,
-    'Door Ticket': getDoorRemaining(inv),
-  });
+app.get('/api/inventory', async (req, res) => {
+  try {
+    const inv = await loadInventory();
+    res.json(inv);
+  } catch (err) {
+    console.error('Error fetching inventory:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Expose config to frontend
@@ -150,7 +154,7 @@ app.post('/api/create-payment', async (req, res) => {
     }
 
     // Check inventory before charging
-    const invCheck = checkInventory(description);
+    const invCheck = await checkInventory(description);
     if (!invCheck.ok) {
       return res.status(400).json({ error: invCheck.error });
     }
@@ -170,9 +174,9 @@ app.post('/api/create-payment', async (req, res) => {
 
     const payment = response.payment;
 
-    // Record in local log
-    saveTransaction({
-      id: payment.id,
+    // Record in Supabase
+    await saveTransaction({
+      tx_id: payment.id,
       amount: (Number(payment.amountMoney.amount) / 100).toFixed(2),
       description: description || 'Sale',
       method: method || 'card',
@@ -181,7 +185,7 @@ app.post('/api/create-payment', async (req, res) => {
     });
 
     // Decrement inventory after successful charge
-    decrementInventory(description);
+    await decrementInventory(description);
 
     res.json({
       paymentId: payment.id,
@@ -195,7 +199,7 @@ app.post('/api/create-payment', async (req, res) => {
 });
 
 // Record a cash payment
-app.post('/api/cash-payment', (req, res) => {
+app.post('/api/cash-payment', async (req, res) => {
   try {
     const { amount, description } = req.body;
     if (!amount || amount < 0.01) {
@@ -203,16 +207,16 @@ app.post('/api/cash-payment', (req, res) => {
     }
 
     // Check inventory before recording
-    const invCheck = checkInventory(description);
+    const invCheck = await checkInventory(description);
     if (!invCheck.ok) {
       return res.status(400).json({ error: invCheck.error });
     }
 
     // Decrement inventory
-    decrementInventory(description);
+    await decrementInventory(description);
 
-    saveTransaction({
-      id: 'cash_' + Date.now(),
+    await saveTransaction({
+      tx_id: 'cash_' + Date.now(),
       amount: parseFloat(amount).toFixed(2),
       description: description || 'Cash Sale',
       method: 'cash',
@@ -228,10 +232,10 @@ app.post('/api/cash-payment', (req, res) => {
 
 // --- Transactions & Reporting ---
 
-// Get all local transactions
-app.get('/api/transactions', (req, res) => {
+// Get all transactions
+app.get('/api/transactions', async (req, res) => {
   try {
-    const txns = loadTransactions();
+    const txns = await loadTransactions();
     res.json(txns);
   } catch (err) {
     console.error('Error fetching transactions:', err.message);
@@ -240,9 +244,9 @@ app.get('/api/transactions', (req, res) => {
 });
 
 // Get sales report summary
-app.get('/api/report', (req, res) => {
+app.get('/api/report', async (req, res) => {
   try {
-    const txns = loadTransactions();
+    const txns = await loadTransactions();
     const succeeded = txns.filter((t) => t.status === 'succeeded' || t.status === 'completed');
 
     const totalSales = succeeded.length;
@@ -320,5 +324,5 @@ app.post('/api/refund', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`POS server running on http://localhost:${PORT}`);
-  console.log(`Access from iPhone: http://<your-local-ip>:${PORT}`);
+  console.log(`Supabase: ${process.env.SUPABASE_URL ? 'connected' : 'NOT configured'}`);
 });
