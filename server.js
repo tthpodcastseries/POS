@@ -374,6 +374,25 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Debug endpoint (temporary)
+app.get('/api/debug', async (req, res) => {
+  try {
+    const { count, error } = await supabase
+      .from('tickets_5050')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'available');
+    res.json({
+      nodeVersion: process.version,
+      supabaseUrl: process.env.SUPABASE_URL ? 'set' : 'missing',
+      supabaseKey: process.env.SUPABASE_KEY ? process.env.SUPABASE_KEY.substring(0, 10) + '...' : 'missing',
+      ticketCount: count,
+      ticketError: error ? error.message : null,
+    });
+  } catch (err) {
+    res.json({ nodeVersion: process.version, error: err.message });
+  }
+});
+
 // Create a payment using Square
 app.post('/api/create-payment', requireAuth, async (req, res) => {
   try {
