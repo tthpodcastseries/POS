@@ -374,53 +374,6 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Debug endpoint (temporary)
-app.get('/api/debug', async (req, res) => {
-  const results = { nodeVersion: process.version };
-
-  // Test 1: inventory (works)
-  try {
-    const { data: inv, error: invErr } = await supabase.from('inventory').select('*');
-    results.inventory = { ok: !invErr, rows: inv?.length, error: invErr?.message };
-  } catch (e) { results.inventory = { error: e.message }; }
-
-  // Test 2: tickets count query (fails)
-  try {
-    const { count, error } = await supabase.from('tickets_5050').select('*', { count: 'exact', head: true }).eq('status', 'available');
-    results.countQuery = { count, error: error?.message };
-  } catch (e) { results.countQuery = { error: e.message }; }
-
-  // Test 3: simple select with limit 1
-  try {
-    const { data, error } = await supabase.from('tickets_5050').select('id').limit(1);
-    results.simpleSelect = { ok: !error, rows: data?.length, error: error?.message };
-  } catch (e) { results.simpleSelect = { error: e.message }; }
-
-  // Test 4: direct fetch to Supabase REST API
-  try {
-    const url = `${process.env.SUPABASE_URL}/rest/v1/tickets_5050?select=id&status=eq.available&limit=1`;
-    const r = await fetch(url, {
-      headers: {
-        'apikey': process.env.SUPABASE_KEY,
-        'Authorization': `Bearer ${process.env.SUPABASE_KEY}`,
-        'Prefer': 'count=exact',
-      },
-    });
-    const contentRange = r.headers.get('content-range');
-    results.directFetch = { status: r.status, contentRange };
-  } catch (e) { results.directFetch = { error: e.message }; }
-
-  // Show actual env values for debugging
-  results.envCheck = {
-    url: process.env.SUPABASE_URL,
-    urlLength: (process.env.SUPABASE_URL || '').length,
-    keyFirst20: (process.env.SUPABASE_KEY || '').substring(0, 20),
-    keyLength: (process.env.SUPABASE_KEY || '').length,
-  };
-
-  res.json(results);
-});
-
 // Create a payment using Square
 app.post('/api/create-payment', requireAuth, async (req, res) => {
   try {
