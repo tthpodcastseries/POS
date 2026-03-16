@@ -542,6 +542,7 @@
         return;
       }
 
+      const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
       const res = await authPost('/api/create-payment', {
         sourceId: tokenResult.token,
         amount: total,
@@ -551,6 +552,7 @@
         buyerName: buyerName || undefined,
         buyerPhone: buyerPhone || undefined,
         newsletterOptIn: buyerNewsletter,
+        fiftyFiftyAmount: fiftyFiftyAmount || undefined,
       });
       const data = await res.json();
 
@@ -578,6 +580,7 @@
     btn.textContent = 'Recording...';
 
     try {
+      const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
       const res = await authPost('/api/cash-payment', {
         amount: total,
         description: getDescription(),
@@ -585,6 +588,7 @@
         buyerName: buyerName || undefined,
         buyerPhone: buyerPhone || undefined,
         newsletterOptIn: buyerNewsletter,
+        fiftyFiftyAmount: fiftyFiftyAmount || undefined,
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);

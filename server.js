@@ -335,7 +335,7 @@ app.get('/api/tickets-5050/available', async (req, res) => {
   }
 });
 
-// --- API: Get 50/50 jackpot (sold count * $5 / 2) ---
+// --- API: Get 50/50 jackpot (50% of actual 50/50 revenue) ---
 app.get('/api/tickets-5050/jackpot', async (req, res) => {
   try {
     const { count, error } = await supabase
@@ -344,7 +344,7 @@ app.get('/api/tickets-5050/jackpot', async (req, res) => {
       .eq('status', 'sold');
     if (error) throw error;
     const soldCount = count || 0;
-    const totalSales = soldCount * 5;
+    const totalSales = fiftyFiftyRevenue;
     const jackpot = totalSales / 2;
     res.json({ soldCount, totalSales, jackpot });
   } catch (err) {
@@ -377,7 +377,7 @@ app.get('/api/config', (req, res) => {
 // Create a payment using Square
 app.post('/api/create-payment', requireAuth, async (req, res) => {
   try {
-    const { sourceId, amount, description, method, email, buyerName, buyerPhone, newsletterOptIn } = req.body;
+    const { sourceId, amount, description, method, email, buyerName, buyerPhone, newsletterOptIn, fiftyFiftyAmount } = req.body;
     const amountCents = Math.round(amount * 100);
 
     if (amountCents < 100) {
@@ -434,6 +434,11 @@ app.post('/api/create-payment', requireAuth, async (req, res) => {
       created: new Date().toISOString(),
     });
 
+    // Track 50/50 revenue for jackpot calculation
+    if (fiftyFiftyAmount && fiftyFiftyAmount > 0) {
+      fiftyFiftyRevenue += parseFloat(fiftyFiftyAmount);
+    }
+
     // Decrement inventory after successful charge
     await decrementInventory(description);
 
@@ -456,7 +461,7 @@ app.post('/api/create-payment', requireAuth, async (req, res) => {
 // Record a cash payment
 app.post('/api/cash-payment', requireAuth, async (req, res) => {
   try {
-    const { amount, description, email, buyerName, buyerPhone, newsletterOptIn } = req.body;
+    const { amount, description, email, buyerName, buyerPhone, newsletterOptIn, fiftyFiftyAmount } = req.body;
     if (!amount || amount < 0.01) {
       return res.status(400).json({ error: 'Invalid amount' });
     }
@@ -498,6 +503,11 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
       status: 'completed',
       created: new Date().toISOString(),
     });
+
+    // Track 50/50 revenue for jackpot calculation
+    if (fiftyFiftyAmount && fiftyFiftyAmount > 0) {
+      fiftyFiftyRevenue += parseFloat(fiftyFiftyAmount);
+    }
 
     // Handle 50/50 ticket assignment + email
     const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
@@ -646,12 +656,18 @@ app.post('/api/refund', requireAuth, async (req, res) => {
       await restoreInventory(txData.description);
     }
 
-    // Release 50/50 tickets back to available
-    const { error: ticketError } = await supabase
+    // Release 50/50 tickets back to available and adjust revenue
+    const { data: releasedTickets, error: ticketError } = await supabase
       .from('tickets_5050')
       .update({ status: 'available', buyer_email: null, buyer_name: null, buyer_phone: null, newsletter_opt_in: false, sold_at: null, transaction_id: null })
-      .eq('transaction_id', paymentId);
+      .eq('transaction_id', paymentId)
+      .select('id');
     if (ticketError) console.error('Error releasing 50/50 tickets:', ticketError.message);
+
+    // If 50/50 tickets were released, recalculate revenue from scratch
+    if (releasedTickets && releasedTickets.length > 0) {
+      await recalcFiftyFiftyRevenue();
+    }
 
     res.json({ status: 'refunded' });
   } catch (err) {
@@ -665,6 +681,45 @@ app.post('/api/refund', requireAuth, async (req, res) => {
 
 // In-memory draw result (persists across requests, resets on server restart)
 let currentDrawResult = null;
+
+// In-memory 50/50 revenue tracker (rebuilt on startup from transactions)
+let fiftyFiftyRevenue = 0;
+
+async function recalcFiftyFiftyRevenue() {
+  try {
+    const txns = await loadTransactions();
+    // For transactions that are purely 50/50, use the full amount
+    // For mixed transactions, we can't determine the split - but the in-memory
+    // tracker handles new sales accurately. This fallback is only for server restarts.
+    fiftyFiftyRevenue = txns
+      .filter(t => (t.status === 'succeeded' || t.status === 'completed') && t.description && t.description.includes('50/50'))
+      .reduce((sum, t) => {
+        // If description ONLY contains 50/50 items, use full amount
+        const items = t.description.split(', ');
+        const allFiftyFifty = items.every(item => item.startsWith('50/50'));
+        if (allFiftyFifty) return sum + parseFloat(t.amount);
+        // Mixed cart - estimate 50/50 portion by subtracting known item prices
+        let otherAmount = 0;
+        for (const item of items) {
+          const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+          if (match) {
+            const name = match[1].trim();
+            const qty = parseInt(match[2]);
+            if (name === 'Early Bird') otherAmount += qty * 20;
+            else if (name === 'GA') otherAmount += qty * 25;
+            else if (name === 'Door Tickets') otherAmount += qty * 30;
+            else if (name === 'Raffle Tickets') otherAmount += qty * 5;
+          }
+        }
+        return sum + Math.max(0, parseFloat(t.amount) - otherAmount);
+      }, 0);
+    console.log('50/50 revenue recalculated:', fiftyFiftyRevenue);
+  } catch (err) {
+    console.error('Error recalculating 50/50 revenue:', err.message);
+  }
+}
+// Recalculate on startup
+recalcFiftyFiftyRevenue();
 
 // Server-side admin password verification
 app.post('/api/admin/verify', (req, res) => {
@@ -817,8 +872,9 @@ app.post('/api/reset', requireAuth, async (req, res) => {
       await saveInventoryItem(name, remaining);
     }
 
-    // 4. Clear draw result
+    // 4. Clear draw result and 50/50 revenue
     currentDrawResult = null;
+    fiftyFiftyRevenue = 0;
 
     console.log('Factory reset completed');
     res.json({ status: 'reset', inventory: DEFAULT_INVENTORY });
