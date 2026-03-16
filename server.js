@@ -297,6 +297,48 @@ async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
   }
 }
 
+// Send winner notification email
+async function sendWinnerEmail(email, name, ticketNumber, jackpotAmount) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'TTH Podcast Series <onboarding@resend.dev>',
+      to: email,
+      subject: 'You Won the 50/50 Draw! - An Evening for Sara J',
+      html: `
+        <div style="font-family:'Poppins',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#140038;color:#d9d9d9;border-radius:12px;overflow:hidden;">
+          <div style="padding:30px 24px;text-align:center;">
+            <h1 style="color:#22c55e;margin:0 0 8px;font-size:28px;">You're a Winner!</h1>
+            <p style="color:#929292;margin:0;">An Evening for Sara J - 50/50 Draw</p>
+          </div>
+          <div style="background:#1a0045;padding:24px;margin:0 16px;border-radius:8px;text-align:center;">
+            <p style="margin:0 0 16px;color:#d9d9d9;font-size:16px;">Hey${name ? ' ' + name : ''}! Congratulations!</p>
+            <p style="margin:0 0 8px;color:#929292;font-size:14px;">Your winning ticket number:</p>
+            <p style="margin:0 0 20px;color:#22c55e;font-size:32px;font-weight:bold;">${ticketNumber}</p>
+            <p style="margin:0 0 8px;color:#929292;font-size:14px;">Your prize:</p>
+            <p style="margin:0;color:#ffffff;font-size:36px;font-weight:bold;">$${jackpotAmount} CAD</p>
+          </div>
+          <div style="padding:20px 24px;text-align:center;">
+            <p style="color:#929292;font-size:13px;margin:0;">
+              Please see the event organizers to claim your prize.<br>
+              Thanks for supporting the cause - and congrats again!
+            </p>
+            <p style="color:#646464;font-size:11px;margin:16px 0 0;">TTH Podcast Series</p>
+          </div>
+        </div>
+      `,
+    });
+    if (error) {
+      console.error('Resend winner email error:', error);
+      return false;
+    }
+    console.log('Winner email sent to', email, '- ticket:', ticketNumber, '- id:', data?.id);
+    return true;
+  } catch (err) {
+    console.error('Error sending winner email:', err.message);
+    return false;
+  }
+}
+
 // After a successful payment, handle 50/50 ticket assignment + email
 async function handle5050IfNeeded(description, email, amount, txId, buyerInfo = {}) {
   const ticketCount = count5050Tickets(description);
@@ -774,6 +816,14 @@ app.post('/api/draw-5050', requireAuth, async (req, res) => {
 
     // Persist the result
     currentDrawResult = result;
+
+    // Email the winner (fire-and-forget)
+    if (winner.buyer_email) {
+      const jackpot = (fiftyFiftyRevenue / 2).toFixed(2);
+      sendWinnerEmail(winner.buyer_email, winner.buyer_name, winner.ticket_number, jackpot).catch(err => {
+        console.error('Winner email failed:', err.message);
+      });
+    }
 
     res.json(result);
   } catch (err) {
