@@ -145,9 +145,9 @@
     });
   }
 
-  // --- Check if cart has 50/50 tickets ---
-  function cartHas5050() {
-    return cart.some(item => item.product === '50/50 Tickets');
+  // --- Check if cart needs buyer info (50/50 tickets or Door tickets) ---
+  function cartNeedsBuyerInfo() {
+    return cart.some(item => item.product === '50/50 Tickets' || item.product === 'Door Tickets');
   }
 
   // --- Cart ---
@@ -278,7 +278,7 @@
     document.getElementById('chargeCardBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 1) return;
-      if (cartHas5050()) {
+      if (cartNeedsBuyerInfo()) {
         pendingPaymentType = 'card';
         showEmailModal();
       } else {
@@ -300,7 +300,7 @@
     document.getElementById('cashBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 0.01) return;
-      if (cartHas5050()) {
+      if (cartNeedsBuyerInfo()) {
         pendingPaymentType = 'cash';
         showEmailModal();
       } else {

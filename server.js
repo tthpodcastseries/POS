@@ -257,7 +257,7 @@ async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: 'TTH Podcast Series <tickets@tthpods.com>',
+      from: 'TTH Podcast Series <5050@tthpods.com>',
       to: email,
       subject: 'Your 50/50 Draw Ticket Numbers - An Evening for Sara J',
       html: `
@@ -301,7 +301,7 @@ async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
 async function sendWinnerEmail(email, name, ticketNumber, jackpotAmount) {
   try {
     const { data, error } = await resend.emails.send({
-      from: 'TTH Podcast Series <tickets@tthpods.com>',
+      from: 'TTH Podcast Series <5050@tthpods.com>',
       to: email,
       subject: 'You Won the 50/50 Draw! - An Evening for Sara J',
       html: `
@@ -941,7 +941,7 @@ app.post('/api/test-email', requireAuth, async (req, res) => {
       return res.json({ ok: false, error: 'RESEND_API_KEY not set' });
     }
     const { data, error } = await resend.emails.send({
-      from: 'TTH POS <tickets@tthpods.com>',
+      from: 'TTH POS <5050@tthpods.com>',
       to: 'tthpodcastseries@gmail.com',
       subject: 'POS Email Test',
       text: 'If you receive this, email delivery is working on Render via Resend.',
