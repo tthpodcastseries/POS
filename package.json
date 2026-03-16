@@ -7,6 +7,9 @@
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
     "cors": "^2.8.5",

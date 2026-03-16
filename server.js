@@ -833,6 +833,24 @@ app.post('/api/reset', requireAuth, async (req, res) => {
   }
 });
 
+// --- Email Test (admin diagnostic) ---
+app.post('/api/test-email', requireAuth, async (req, res) => {
+  try {
+    if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+      return res.json({ ok: false, error: 'GMAIL env vars not set' });
+    }
+    const info = await emailTransporter.sendMail({
+      from: `"TTH POS" <${process.env.GMAIL_USER}>`,
+      to: process.env.GMAIL_USER,
+      subject: 'POS Email Test',
+      text: 'If you receive this, email delivery is working on Render.',
+    });
+    res.json({ ok: true, messageId: info.messageId, response: info.response });
+  } catch (err) {
+    res.json({ ok: false, error: err.message, code: err.code });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`POS server running on http://localhost:${PORT}`);
