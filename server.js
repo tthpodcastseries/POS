@@ -718,8 +718,8 @@ async function recalcFiftyFiftyRevenue() {
     console.error('Error recalculating 50/50 revenue:', err.message);
   }
 }
-// Recalculate on startup
-recalcFiftyFiftyRevenue();
+// Recalculate on startup (deferred to avoid blocking)
+setTimeout(() => recalcFiftyFiftyRevenue(), 2000);
 
 // Server-side admin password verification
 app.post('/api/admin/verify', (req, res) => {
