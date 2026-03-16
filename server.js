@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { SquareClient, SquareEnvironment } = require('square');
 const { createClient } = require('@supabase/supabase-js');
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(cors());
@@ -34,8 +34,14 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// Resend email setup
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Gmail SMTP email setup (Nodemailer)
+const emailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+});
 
 // --- Transactions (Supabase) ---
 
@@ -245,9 +251,8 @@ async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
   const ticketList = ticketNumbers.map(n => `<li style="font-size:18px;padding:4px 0;"><strong>${n}</strong></li>`).join('');
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: 'TTH Podcast Series <onboarding@resend.dev>',
-      replyTo: 'tthpodcastseries@gmail.com',
+    await emailTransporter.sendMail({
+      from: `TTH Podcast Series <${process.env.GMAIL_USER}>`,
       to: email,
       subject: 'Your 50/50 Draw Ticket Numbers - An Evening for Sara J',
       html: `
@@ -275,11 +280,6 @@ async function sendTicketEmail(email, ticketNumbers, amount, buyerName) {
         </div>
       `,
     });
-
-    if (error) {
-      console.error('Error sending ticket email:', error);
-      return false;
-    }
     console.log('Ticket email sent to', email, '- tickets:', ticketNumbers.join(', '));
     return true;
   } catch (err) {
@@ -769,5 +769,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`POS server running on http://localhost:${PORT}`);
   console.log(`Supabase: ${process.env.SUPABASE_URL ? 'connected' : 'NOT configured'}`);
-  console.log(`Resend: ${process.env.RESEND_API_KEY ? 'configured' : 'NOT configured'}`);
+  console.log(`Gmail SMTP: ${process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'configured' : 'NOT configured'}`);
 });
