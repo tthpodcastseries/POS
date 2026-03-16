@@ -909,6 +909,8 @@ main {
 /* Inventory edit screen */
 .inv-edit-content {
   padding: 20px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .inv-edit-row {
