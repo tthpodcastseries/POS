@@ -665,6 +665,82 @@ main {
 }
 
 
+/* Expense modal */
+.expense-modal-content {
+  padding-bottom: 20px;
+}
+
+.expense-display {
+  font-size: 36px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--white);
+  padding: 16px 0 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.expense-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 8px 16px;
+}
+
+.numpad-btn {
+  background: rgba(217,217,217,0.1);
+  color: var(--light-grey);
+  border: 1px solid rgba(217,217,217,0.15);
+  border-radius: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  padding: 14px 0;
+  font-family: 'Poppins', sans-serif;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.numpad-btn:active {
+  background: rgba(217,217,217,0.2);
+}
+
+.numpad-del {
+  color: #ef4444;
+}
+
+.expense-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 8px;
+  justify-content: center;
+}
+
+.expense-cat-btn {
+  background: rgba(217,217,217,0.08);
+  color: var(--light-grey);
+  border: 1px solid rgba(217,217,217,0.15);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  font-family: 'Poppins', sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex: 1 1 auto;
+  min-width: 80px;
+  text-align: center;
+}
+
+.expense-cat-btn:active {
+  background: rgba(239,68,68,0.2);
+  border-color: #ef4444;
+}
+
+.expense-cat-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Cash modal */
 .cash-confirm-text {
   text-align: center;
@@ -698,6 +774,11 @@ main {
 .txn-method.card {
   background: rgba(84,105,212,0.15);
   color: #818cf8;
+}
+
+.txn-method.expense {
+  background: rgba(239,68,68,0.15);
+  color: #ef4444;
 }
 
 
@@ -922,6 +1003,25 @@ main {
 .ticket-icon {
   background: rgba(234,179,8,0.2);
   color: #facc15;
+}
+
+.raffle-icon {
+  background: rgba(251,146,60,0.2);
+  color: #fb923c;
+}
+
+.event-ticket-icon {
+  background: rgba(168,85,247,0.2);
+  color: #a855f7;
+}
+
+.expense-icon {
+  background: rgba(239,68,68,0.2);
+  color: #ef4444;
+}
+
+.expense-amount {
+  color: #ef4444 !important;
 }
 
 /* Inventory edit screen */
@@ -1392,4 +1492,83 @@ main {
 .btn-export-disabled {
   opacity: 0.4;
   pointer-events: none;
+}
+
+/* Clickable Total Sales card */
+.report-card-clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.report-card-clickable:active {
+  background: rgba(255,255,255,0.08);
+}
+
+.sales-icon {
+  background: rgba(250,204,21,0.15);
+  color: #facc15;
+}
+
+/* Sales Breakdown Modal */
+.breakdown-modal-content {
+  max-width: 360px;
+}
+
+.breakdown-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+}
+
+.breakdown-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.breakdown-icon.cash-icon {
+  background: rgba(34,197,94,0.15);
+  color: #22c55e;
+}
+
+.breakdown-icon.card-icon {
+  background: rgba(96,165,250,0.15);
+  color: #60a5fa;
+}
+
+.breakdown-icon.applepay-icon {
+  background: rgba(255,255,255,0.1);
+  color: #d9d9d9;
+}
+
+.breakdown-label {
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 70px;
+}
+
+.breakdown-count {
+  font-size: 12px;
+  color: var(--mid-grey);
+  flex: 1;
+}
+
+.breakdown-amount {
+  font-weight: 700;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
 }

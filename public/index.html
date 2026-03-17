@@ -142,6 +142,7 @@
             Card
           </button>
         </div>
+
       </div>
     </main>
 
@@ -231,9 +232,14 @@
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         </button>
         <h1>Sales Report</h1>
-        <button id="editInventoryBtn" class="icon-btn" aria-label="Edit inventory">
-          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        </button>
+        <div class="header-actions">
+          <button id="expenseBtn" class="icon-btn" aria-label="Log expense">
+            <svg width="22" height="22" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button id="editInventoryBtn" class="icon-btn" aria-label="Edit inventory">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
       </header>
       <div class="report-content" id="reportContent">
         <p class="loading">Loading...</p>
@@ -337,6 +343,39 @@
     </div>
   </div>
 
+  <!-- Expense modal -->
+    <div id="expenseModal" class="modal hidden">
+      <div class="modal-content expense-modal-content">
+        <div class="modal-header">
+          <h2>Log Expense</h2>
+          <button id="closeExpense" class="close-btn">&times;</button>
+        </div>
+        <div class="expense-display" id="expenseDisplay">$0.00</div>
+        <div class="expense-numpad">
+          <button class="numpad-btn" data-val="1">1</button>
+          <button class="numpad-btn" data-val="2">2</button>
+          <button class="numpad-btn" data-val="3">3</button>
+          <button class="numpad-btn" data-val="4">4</button>
+          <button class="numpad-btn" data-val="5">5</button>
+          <button class="numpad-btn" data-val="6">6</button>
+          <button class="numpad-btn" data-val="7">7</button>
+          <button class="numpad-btn" data-val="8">8</button>
+          <button class="numpad-btn" data-val="9">9</button>
+          <button class="numpad-btn" data-val=".">.</button>
+          <button class="numpad-btn" data-val="0">0</button>
+          <button class="numpad-btn numpad-del" data-val="del">&larr;</button>
+        </div>
+        <div class="expense-categories">
+          <button class="expense-cat-btn" data-category="Advertising">Advertising</button>
+          <button class="expense-cat-btn" data-category="Fees">Fees</button>
+          <button class="expense-cat-btn" data-category="Supplies">Supplies</button>
+          <button class="expense-cat-btn" data-category="Refund">Refund</button>
+          <button class="expense-cat-btn" data-category="Misc">Misc</button>
+        </div>
+        <div id="expense-errors" class="error-text"></div>
+      </div>
+    </div>
+
   <!-- Admin password modal (for cash) -->
     <div id="adminModal" class="modal hidden">
       <div class="modal-content">
@@ -344,7 +383,7 @@
           <h2>Admin Required</h2>
           <button id="closeAdmin" class="close-btn">&times;</button>
         </div>
-        <p class="cash-confirm-text">Enter admin password for cash transactions</p>
+        <p class="cash-confirm-text">Enter admin password to continue</p>
         <input type="password" id="adminPasswordInput" class="form-input" placeholder="Password" inputmode="numeric">
         <div id="admin-errors" class="error-text"></div>
         <button id="confirmAdminBtn" class="btn btn-primary btn-full">Continue</button>
@@ -369,6 +408,17 @@
         <button id="confirmCancel" class="btn btn-secondary">Cancel</button>
         <button id="confirmOk" class="btn btn-primary">Confirm</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Sales Breakdown Modal -->
+  <div id="salesBreakdownModal" class="modal hidden">
+    <div class="modal-content breakdown-modal-content">
+      <div class="modal-header">
+        <h2>Sales Breakdown</h2>
+        <button id="closeBreakdown" class="close-btn">&times;</button>
+      </div>
+      <div id="breakdownContent" class="breakdown-content"></div>
     </div>
   </div>
 

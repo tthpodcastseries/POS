@@ -591,6 +591,36 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
   }
 });
 
+// Record an expense
+app.post('/api/expense', requireAuth, async (req, res) => {
+  try {
+    const { amount, category } = req.body;
+    const validCategories = ['Advertising', 'Fees', 'Supplies', 'Refund', 'Misc'];
+    if (!amount || amount < 0.01) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+    if (!category || !validCategories.includes(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+
+    const txId = 'exp_' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+    await saveTransaction({
+      tx_id: txId,
+      amount: parseFloat(amount).toFixed(2),
+      description: `Expense: ${category}`,
+      method: 'expense',
+      status: 'completed',
+      created: new Date().toISOString(),
+    });
+
+    res.json({ status: 'recorded', txId });
+  } catch (err) {
+    console.error('Error recording expense:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Transactions & Reporting ---
 
 app.get('/api/transactions', requireAuth, async (req, res) => {
@@ -606,18 +636,51 @@ app.get('/api/transactions', requireAuth, async (req, res) => {
 app.get('/api/report', requireAuth, async (req, res) => {
   try {
     const txns = await loadTransactions();
-    const succeeded = txns.filter((t) => t.status === 'succeeded' || t.status === 'completed');
+    const succeeded = txns.filter((t) => (t.status === 'succeeded' || t.status === 'completed') && t.method !== 'expense');
     const refunded = txns.filter((t) => t.status === 'refunded');
+    const expenses = txns.filter((t) => t.method === 'expense' && t.status === 'completed');
 
     const totalSales = succeeded.length;
     const totalRevenue = succeeded.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const refundedTotal = refunded.reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    const netRevenue = totalRevenue - refundedTotal;
+    const expenseTotal = expenses.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const netRevenue = totalRevenue - refundedTotal - expenseTotal;
 
     const cashTxns = succeeded.filter((t) => t.method === 'cash');
     const cardTxns = succeeded.filter((t) => t.method === 'card');
+    const applePayTxns = succeeded.filter((t) => t.method === 'applepay');
     const cashTotal = cashTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const cardTotal = cardTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const applePayTotal = applePayTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+    // Count raffle and event ticket sales from descriptions
+    let raffleSold = 0;
+    let raffleRevenue = 0;
+    let eventTicketsSold = 0;
+    let eventTicketsRevenue = 0;
+    const ticketPrices = { 'Early Bird Ticket': 20, 'GA Ticket': 25, 'Door Tickets': 30 };
+    for (const t of succeeded) {
+      if (t.description) {
+        const items = t.description.split(', ');
+        for (const item of items) {
+          const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+          if (!match) continue;
+          const name = match[1].trim();
+          const qty = parseInt(match[2]);
+          if (name === 'Raffle Tickets') {
+            raffleSold += qty;
+            if (qty === 1) raffleRevenue += 5;
+            else if (qty === 5) raffleRevenue += 20;
+            else if (qty === 15) raffleRevenue += 50;
+            else if (qty === 35) raffleRevenue += 100;
+            else raffleRevenue += qty * 5;
+          } else if (ticketPrices[name] !== undefined) {
+            eventTicketsSold += qty;
+            eventTicketsRevenue += qty * ticketPrices[name];
+          }
+        }
+      }
+    }
 
     // Get 50/50 ticket stats
     const { count: ticketsSold } = await supabase
@@ -641,13 +704,24 @@ app.get('/api/report', requireAuth, async (req, res) => {
       .eq('status', 'sold')
       .eq('newsletter_opt_in', true);
 
+    // Build expense breakdown by category
+    const expensesByCategory = {};
+    for (const exp of expenses) {
+      const cat = exp.description.replace('Expense: ', '');
+      expensesByCategory[cat] = (expensesByCategory[cat] || 0) + parseFloat(exp.amount);
+    }
+
     res.json({
       totalSales,
       totalRevenue: totalRevenue.toFixed(2),
       netRevenue: netRevenue.toFixed(2),
       refunds: { count: refunded.length, total: refundedTotal.toFixed(2) },
+      expenses: { count: expenses.length, total: expenseTotal.toFixed(2), byCategory: expensesByCategory },
       cash: { count: cashTxns.length, total: cashTotal.toFixed(2) },
       card: { count: cardTxns.length, total: cardTotal.toFixed(2) },
+      applePay: { count: applePayTxns.length, total: applePayTotal.toFixed(2) },
+      raffle: { sold: raffleSold, total: raffleRevenue.toFixed(2) },
+      eventTickets: { sold: eventTicketsSold, total: eventTicketsRevenue.toFixed(2) },
       tickets5050: { sold: ticketsSold || 0, available: ticketsAvailable || 0 },
       newsletterSubscribers: newsletterCount || 0,
       transactions: allDisplayable,

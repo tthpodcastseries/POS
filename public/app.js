@@ -9,6 +9,7 @@
   let buyerPhone = '';
   let buyerNewsletter = false;
   let cartIdCounter = 0;
+  let expenseValue = '';
 
   // Haptic feedback helper
   function haptic() {
@@ -347,19 +348,67 @@
       document.getElementById('admin-errors').textContent = '';
     });
 
+    // --- Expense button (admin password required, inside report screen) ---
+    document.getElementById('expenseBtn').addEventListener('click', () => {
+      pendingPaymentType = 'expense';
+      showAdminModal();
+    });
+
+    // --- Expense modal ---
+    document.getElementById('closeExpense').addEventListener('click', () => {
+      document.getElementById('expenseModal').classList.add('hidden');
+      expenseValue = '';
+    });
+
+    document.querySelectorAll('.numpad-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        haptic();
+        const val = btn.dataset.val;
+        if (val === 'del') {
+          expenseValue = expenseValue.slice(0, -1);
+        } else if (val === '.') {
+          if (!expenseValue.includes('.')) expenseValue += '.';
+        } else {
+          // Limit to 2 decimal places
+          const dotIdx = expenseValue.indexOf('.');
+          if (dotIdx >= 0 && expenseValue.length - dotIdx > 2) return;
+          // Limit total length
+          if (expenseValue.replace('.', '').length >= 7) return;
+          expenseValue += val;
+        }
+        updateExpenseDisplay();
+      });
+    });
+
+    document.querySelectorAll('.expense-cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        haptic();
+        submitExpense(btn.dataset.category);
+      });
+    });
+
     // --- New sale ---
     document.getElementById('newSaleBtn').addEventListener('click', () => {
       document.getElementById('successOverlay').classList.add('hidden');
     });
 
-    // --- History ---
-    document.getElementById('historyBtn').addEventListener('click', loadHistory);
+    // --- History (admin locked) ---
+    document.getElementById('historyBtn').addEventListener('click', () => {
+      pendingPaymentType = 'history';
+      showAdminModal();
+    });
     document.getElementById('backBtn').addEventListener('click', () => {
       document.getElementById('historyScreen').classList.add('hidden');
     });
 
-    // --- Report ---
-    document.getElementById('reportBtn').addEventListener('click', loadReport);
+    // --- Report (admin locked) ---
+    document.getElementById('reportBtn').addEventListener('click', () => {
+      pendingPaymentType = 'report';
+      showAdminModal();
+    });
+    document.getElementById('closeBreakdown').addEventListener('click', () => {
+      document.getElementById('salesBreakdownModal').classList.add('hidden');
+    });
     document.getElementById('reportBackBtn').addEventListener('click', () => {
       document.getElementById('reportScreen').classList.add('hidden');
     });
@@ -392,40 +441,10 @@
     document.getElementById('reallocateEBtoGA').addEventListener('click', () => reallocateTickets('Early Bird Ticket', 'GA Ticket'));
     document.getElementById('reallocateGAtoDoor').addEventListener('click', () => reallocateTickets('GA Ticket', 'Door Ticket'));
 
-    // --- 50/50 Draw (admin password validated server-side) ---
-    document.getElementById('drawBtn').addEventListener('click', async () => {
-      const password = prompt('Enter admin password:');
-      if (!password) return;
-      try {
-        const res = await fetch('/api/admin/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password }),
-        });
-        if (!res.ok) {
-          showToast('Incorrect password');
-          return;
-        }
-      } catch (err) {
-        showToast('Could not verify password');
-        return;
-      }
-      document.getElementById('drawScreen').classList.remove('hidden');
-      refreshJackpot();
-      // Check if there's already a draw result
-      try {
-        const currentRes = await authPost('/api/draw-5050/current', {});
-        const current = await currentRes.json();
-        if (current && current.ticketNumber) {
-          displayDrawResult(current);
-        } else {
-          document.getElementById('drawResult').classList.add('hidden');
-          document.getElementById('redrawBtn').classList.add('hidden');
-        }
-      } catch (e) {
-        document.getElementById('drawResult').classList.add('hidden');
-        document.getElementById('redrawBtn').classList.add('hidden');
-      }
+    // --- 50/50 Draw (admin locked) ---
+    document.getElementById('drawBtn').addEventListener('click', () => {
+      pendingPaymentType = 'draw';
+      showAdminModal();
     });
     document.getElementById('drawBackBtn').addEventListener('click', () => {
       document.getElementById('drawScreen').classList.add('hidden');
@@ -551,22 +570,95 @@
         return;
       }
       document.getElementById('adminModal').classList.add('hidden');
-      // Password verified - proceed with cash flow
-      if (cartNeedsBuyerInfo()) {
-        pendingPaymentType = 'cash';
-        showEmailModal();
+      // Password verified - route to appropriate flow
+      const flow = pendingPaymentType;
+      pendingPaymentType = null;
+      if (flow === 'expense') {
+        openExpenseModal();
+      } else if (flow === 'history') {
+        loadHistory();
+      } else if (flow === 'report') {
+        loadReport();
+      } else if (flow === 'draw') {
+        openDrawScreen();
       } else {
-        buyerEmail = '';
-        buyerName = '';
-        buyerPhone = '';
-        buyerNewsletter = false;
-        openCashModal();
+        // Cash flow
+        if (cartNeedsBuyerInfo()) {
+          pendingPaymentType = 'cash';
+          showEmailModal();
+        } else {
+          buyerEmail = '';
+          buyerName = '';
+          buyerPhone = '';
+          buyerNewsletter = false;
+          openCashModal();
+        }
       }
     } catch (err) {
       document.getElementById('admin-errors').textContent = 'Could not verify password';
     } finally {
       btn.disabled = false;
       btn.textContent = 'Continue';
+    }
+  }
+
+  // --- Expense Modal ---
+  function openExpenseModal() {
+    expenseValue = '';
+    updateExpenseDisplay();
+    document.getElementById('expense-errors').textContent = '';
+    document.getElementById('expenseModal').classList.remove('hidden');
+  }
+
+  function updateExpenseDisplay() {
+    const num = parseFloat(expenseValue) || 0;
+    document.getElementById('expenseDisplay').textContent = '$' + num.toFixed(2);
+    // Disable category buttons if amount is 0
+    const cats = document.querySelectorAll('.expense-cat-btn');
+    cats.forEach(btn => { btn.disabled = num < 0.01; });
+  }
+
+  async function submitExpense(category) {
+    const amount = parseFloat(expenseValue);
+    if (!amount || amount < 0.01) {
+      document.getElementById('expense-errors').textContent = 'Enter an amount first';
+      return;
+    }
+
+    // Disable buttons during submit
+    document.querySelectorAll('.expense-cat-btn').forEach(btn => { btn.disabled = true; });
+
+    try {
+      const res = await authPost('/api/expense', { amount, category });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      document.getElementById('expenseModal').classList.add('hidden');
+      expenseValue = '';
+      showToast(`Expense logged: $${amount.toFixed(2)} - ${category}`, 'success', 3000);
+    } catch (err) {
+      document.getElementById('expense-errors').textContent = 'Error: ' + err.message;
+    } finally {
+      updateExpenseDisplay();
+    }
+  }
+
+  // --- Open Draw Screen ---
+  async function openDrawScreen() {
+    document.getElementById('drawScreen').classList.remove('hidden');
+    refreshJackpot();
+    try {
+      const currentRes = await authPost('/api/draw-5050/current', {});
+      const current = await currentRes.json();
+      if (current && current.ticketNumber) {
+        displayDrawResult(current);
+      } else {
+        document.getElementById('drawResult').classList.add('hidden');
+        document.getElementById('redrawBtn').classList.add('hidden');
+      }
+    } catch (e) {
+      document.getElementById('drawResult').classList.add('hidden');
+      document.getElementById('redrawBtn').classList.add('hidden');
     }
   }
 
@@ -788,43 +880,62 @@
       const data = await res.json();
 
       const tickets5050 = data.tickets5050 || { sold: 0, available: 0 };
+      const raffle = data.raffle || { sold: 0, total: '0.00' };
+      const eventTickets = data.eventTickets || { sold: 0, total: '0.00' };
 
       const refunds = data.refunds || { count: 0, total: '0.00' };
+      const expenses = data.expenses || { count: 0, total: '0.00', byCategory: {} };
       const hasRefunds = refunds.count > 0;
+      const hasExpenses = expenses.count > 0;
+      const hasDeductions = hasRefunds || hasExpenses;
 
       document.getElementById('reportContent').innerHTML = `
         <div class="report-hero">
           <div class="report-total-label">Total Revenue</div>
           <div class="report-total-amount">$${data.totalRevenue}</div>
           <div class="report-total-count">${data.totalSales} sale${data.totalSales !== 1 ? 's' : ''}</div>
-          ${hasRefunds ? `
+          ${hasDeductions ? `
             <div class="report-refund-summary">
-              <span class="refund-line">- $${refunds.total} refunded (${refunds.count})</span>
+              ${hasRefunds ? `<span class="refund-line">- $${refunds.total} refunded (${refunds.count})</span>` : ''}
+              ${hasExpenses ? `<span class="refund-line">- $${expenses.total} expenses (${expenses.count})</span>` : ''}
               <span class="net-line">Net: $${data.netRevenue}</span>
             </div>
           ` : ''}
         </div>
 
         <div class="report-breakdown">
-          <div class="report-card">
-            <div class="report-card-icon cash-icon">
+          <div class="report-card report-card-clickable" id="totalSalesCard"
+               data-cash-count="${data.cash.count}" data-cash-total="${data.cash.total}"
+               data-card-count="${data.card.count}" data-card-total="${data.card.total}"
+               data-applepay-count="${(data.applePay || {count:0}).count}" data-applepay-total="${(data.applePay || {total:'0.00'}).total}">
+            <div class="report-card-icon sales-icon">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
             </div>
             <div class="report-card-info">
-              <span class="report-card-label">Cash</span>
-              <span class="report-card-count">${data.cash.count} sale${data.cash.count !== 1 ? 's' : ''}</span>
+              <span class="report-card-label">Total Sales</span>
+              <span class="report-card-count">${data.totalSales} sale${data.totalSales !== 1 ? 's' : ''} &rsaquo;</span>
             </div>
-            <span class="report-card-amount">$${data.cash.total}</span>
+            <span class="report-card-amount">$${data.totalRevenue}</span>
           </div>
           <div class="report-card">
-            <div class="report-card-icon card-icon">
-              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <div class="report-card-icon raffle-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/></svg>
             </div>
             <div class="report-card-info">
-              <span class="report-card-label">Card</span>
-              <span class="report-card-count">${data.card.count} sale${data.card.count !== 1 ? 's' : ''}</span>
+              <span class="report-card-label">Raffle Tickets</span>
+              <span class="report-card-count">${raffle.sold} sold</span>
             </div>
-            <span class="report-card-amount">$${data.card.total}</span>
+            <span class="report-card-amount">$${raffle.total}</span>
+          </div>
+          <div class="report-card">
+            <div class="report-card-icon event-ticket-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M7 6v12"/></svg>
+            </div>
+            <div class="report-card-info">
+              <span class="report-card-label">Event Tickets</span>
+              <span class="report-card-count">${eventTickets.sold} sold</span>
+            </div>
+            <span class="report-card-amount">$${eventTickets.total}</span>
           </div>
           <div class="report-card">
             <div class="report-card-icon ticket-icon">
@@ -835,6 +946,18 @@
               <span class="report-card-count">${tickets5050.sold} sold / ${tickets5050.available} remaining</span>
             </div>
           </div>
+          ${hasExpenses ? `
+          <div class="report-card">
+            <div class="report-card-icon expense-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M2 12h20"/><line x1="4" y1="4" x2="20" y2="20"/></svg>
+            </div>
+            <div class="report-card-info">
+              <span class="report-card-label">Expenses</span>
+              <span class="report-card-count">${Object.entries(expenses.byCategory).map(([cat, amt]) => cat + ': $' + amt.toFixed(2)).join(' / ')}</span>
+            </div>
+            <span class="report-card-amount expense-amount">-$${expenses.total}</span>
+          </div>
+          ` : ''}
         </div>
 
         <div class="export-row">
@@ -879,6 +1002,47 @@
             .join('')}
         </div>
       `;
+
+      // Attach click handler for Total Sales breakdown
+      const totalSalesCard = document.getElementById('totalSalesCard');
+      if (totalSalesCard) {
+        totalSalesCard.addEventListener('click', () => {
+          const cashCount = totalSalesCard.dataset.cashCount;
+          const cashTotal = totalSalesCard.dataset.cashTotal;
+          const cardCount = totalSalesCard.dataset.cardCount;
+          const cardTotal = totalSalesCard.dataset.cardTotal;
+          const apCount = totalSalesCard.dataset.applepayCount;
+          const apTotal = totalSalesCard.dataset.applepayTotal;
+
+          document.getElementById('breakdownContent').innerHTML = `
+            <div class="breakdown-row">
+              <div class="breakdown-icon cash-icon">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
+              </div>
+              <span class="breakdown-label">Cash</span>
+              <span class="breakdown-count">${cashCount} sale${cashCount !== '1' ? 's' : ''}</span>
+              <span class="breakdown-amount">$${cashTotal}</span>
+            </div>
+            <div class="breakdown-row">
+              <div class="breakdown-icon card-icon">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg>
+              </div>
+              <span class="breakdown-label">Card</span>
+              <span class="breakdown-count">${cardCount} sale${cardCount !== '1' ? 's' : ''}</span>
+              <span class="breakdown-amount">$${cardTotal}</span>
+            </div>
+            <div class="breakdown-row">
+              <div class="breakdown-icon applepay-icon">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 3C9 3 7 5 7 8s2 5 2 5"/><path d="M15 3c0 0-2 2-2 5s2 5 2 5"/><rect x="4" y="11" width="14" height="6" rx="2"/></svg>
+              </div>
+              <span class="breakdown-label">Apple Pay</span>
+              <span class="breakdown-count">${apCount} sale${apCount !== '1' ? 's' : ''}</span>
+              <span class="breakdown-amount">$${apTotal}</span>
+            </div>
+          `;
+          document.getElementById('salesBreakdownModal').classList.remove('hidden');
+        });
+      }
     } catch (err) {
       document.getElementById('reportContent').innerHTML =
         '<p class="loading">Error loading report</p>';
