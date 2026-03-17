@@ -531,39 +531,19 @@
     document.getElementById('drawBackBtn').addEventListener('click', () => {
       document.getElementById('drawScreen').classList.add('hidden');
     });
-    document.getElementById('runDrawBtn').addEventListener('click', runDraw);
-    document.getElementById('redrawBtn').addEventListener('click', async () => {
-      const ok = await showConfirm('Draw Again?', 'This will select a NEW random winner. The previous result will be replaced. Are you sure?', 'Draw Again', true);
-      if (ok) runDraw();
+    document.getElementById('runDrawBtn').addEventListener('click', () => {
+      pendingPaymentType = 'runDraw';
+      showAdminModal();
+    });
+    document.getElementById('redrawBtn').addEventListener('click', () => {
+      pendingPaymentType = 'runDraw';
+      showAdminModal();
     });
 
     // Factory Reset
-    document.getElementById('resetBtn').addEventListener('click', async () => {
-      const confirmed = await showConfirm(
-        'Factory Reset',
-        'This will delete ALL transactions, reset ALL 50/50 tickets to available, and restore inventory to defaults. This cannot be undone.',
-        'Reset Everything',
-        true
-      );
-      if (!confirmed) return;
-      const resetBtn = document.getElementById('resetBtn');
-      resetBtn.disabled = true;
-      resetBtn.textContent = 'Resetting...';
-      try {
-        const res = await authPost('/api/reset', {});
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Reset failed');
-        showToast('Factory reset complete', 'success');
-        document.getElementById('drawResult').classList.add('hidden');
-        document.getElementById('redrawBtn').classList.add('hidden');
-        refreshJackpot();
-        refreshInventory();
-      } catch (err) {
-        showToast('Reset failed: ' + err.message);
-      } finally {
-        resetBtn.disabled = false;
-        resetBtn.textContent = 'Factory Reset';
-      }
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      pendingPaymentType = 'factoryReset';
+      showAdminModal();
     });
   }
 
@@ -674,6 +654,10 @@
         loadReport();
       } else if (flow === 'draw') {
         openDrawScreen();
+      } else if (flow === 'runDraw') {
+        runDraw();
+      } else if (flow === 'factoryReset') {
+        doFactoryReset();
       } else {
         // Cash flow
         if (cartNeedsBuyerInfo()) {
@@ -733,6 +717,35 @@
       document.getElementById('expense-errors').textContent = 'Error: ' + err.message;
     } finally {
       updateExpenseDisplay();
+    }
+  }
+
+  // --- Factory Reset (admin protected) ---
+  async function doFactoryReset() {
+    const confirmed = await showConfirm(
+      'Factory Reset',
+      'This will delete ALL transactions, reset ALL 50/50 tickets to available, and restore inventory to defaults. This cannot be undone.',
+      'Reset Everything',
+      true
+    );
+    if (!confirmed) return;
+    const resetBtn = document.getElementById('resetBtn');
+    resetBtn.disabled = true;
+    resetBtn.textContent = 'Resetting...';
+    try {
+      const res = await authPost('/api/reset', {});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Reset failed');
+      showToast('Factory reset complete', 'success');
+      document.getElementById('drawResult').classList.add('hidden');
+      document.getElementById('redrawBtn').classList.add('hidden');
+      refreshJackpot();
+      refreshInventory();
+    } catch (err) {
+      showToast('Reset failed: ' + err.message);
+    } finally {
+      resetBtn.disabled = false;
+      resetBtn.textContent = 'Factory Reset';
     }
   }
 
