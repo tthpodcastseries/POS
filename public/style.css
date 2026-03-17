@@ -1588,6 +1588,15 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+/* Credit line */
+.credit-line {
+  text-align: center;
+  font-size: 11px;
+  color: var(--mid-grey);
+  padding: 6px 0 2px;
+  letter-spacing: 0.3px;
+}
+
 /* Focus-visible styles */
 .btn:focus-visible,
 .product-btn:focus-visible,
