@@ -11,11 +11,14 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <title>TTH Podcast Series - POS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,600;0,700;1,600&display=swap">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <!-- Loading splash for cold starts -->
-  <div id="loadingSplash" style="position:fixed;inset:0;background:#140038;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:12px;">
+  <div id="loadingSplash" role="status" aria-live="polite" style="position:fixed;inset:0;background:#140038;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:12px;">
     <div style="color:#D9D9D9;font-family:'Poppins',sans-serif;font-size:17px;font-weight:700;">TTH Podcast Series</div>
     <div style="color:#929292;font-family:'Poppins',sans-serif;font-size:13px;">Loading POS...</div>
   </div>
@@ -41,7 +44,7 @@
 
       <!-- Raffle Tickets -->
       <div class="product-section">
-        <div class="section-title">Raffle Tickets</div>
+        <h2 class="section-title">Raffle Tickets</h2>
         <div class="product-grid grid-4">
           <button class="product-btn" data-product="Raffle Tickets" data-qty="1" data-price="5">
             <span class="qty">1</span>
@@ -64,7 +67,7 @@
 
       <!-- 50/50 Tickets -->
       <div class="product-section">
-        <div class="section-title">50/50 Tickets <span class="section-remaining" id="tickets5050count"></span> <span class="jackpot-inline" id="jackpotInline"></span></div>
+        <h2 class="section-title">50/50 Tickets <span class="section-remaining" id="tickets5050count"></span> <span class="jackpot-inline" id="jackpotInline"></span></h2>
         <div class="product-grid grid-4">
           <button class="product-btn" data-product="50/50 Tickets" data-qty="1" data-price="5">
             <span class="qty">1</span>
@@ -87,7 +90,7 @@
 
       <!-- Tickets -->
       <div class="product-section">
-        <div class="section-title">Event Tickets</div>
+        <h2 class="section-title">Event Tickets</h2>
         <div class="product-grid ticket-grid">
           <button class="product-btn" data-product="Early Bird Ticket" data-qty="1" data-price="20">
             <span class="qty">Early Bird</span>
@@ -147,10 +150,10 @@
     </main>
 
     <!-- Card payment modal -->
-    <div id="paymentModal" class="modal hidden">
+    <div id="paymentModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Card Payment</h2>
+          <h2 id="paymentModalTitle">Card Payment</h2>
           <button id="closePayment" class="close-btn">&times;</button>
         </div>
         <div class="modal-amount">$<span id="modalAmount">0.00</span></div>
@@ -161,10 +164,10 @@
     </div>
 
     <!-- Cash confirmation modal -->
-    <div id="cashModal" class="modal hidden">
+    <div id="cashModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cashModalTitle">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Cash Payment</h2>
+          <h2 id="cashModalTitle">Cash Payment</h2>
           <button id="closeCash" class="close-btn">&times;</button>
         </div>
         <div class="modal-amount">$<span id="cashAmount">0.00</span></div>
@@ -175,10 +178,10 @@
 
 
     <!-- Buyer info modal (for 50/50 tickets) -->
-    <div id="emailModal" class="modal hidden">
+    <div id="emailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="emailModalTitle">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Buyer Info</h2>
+          <h2 id="emailModalTitle">Buyer Info</h2>
           <button id="closeEmail" class="close-btn">&times;</button>
         </div>
         <p class="email-note">Required for 50/50 ticket numbers</p>
@@ -196,7 +199,7 @@
     </div>
 
     <!-- Success overlay -->
-    <div id="successOverlay" class="overlay hidden">
+    <div id="successOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-label="Payment successful">
       <div class="success-content">
         <svg width="80" height="80" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"><circle cx="40" cy="40" r="36"/><path d="M24 40l10 10 22-22"/></svg>
         <h2>Payment Successful</h2>
@@ -212,7 +215,7 @@
     </div>
 
     <!-- Transaction history screen -->
-    <div id="historyScreen" class="screen hidden">
+    <div id="historyScreen" class="screen hidden" role="region" aria-label="Transaction history">
       <header>
         <button id="backBtn" class="icon-btn" aria-label="Back">
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -226,7 +229,7 @@
     </div>
 
     <!-- Report screen -->
-    <div id="reportScreen" class="screen hidden">
+    <div id="reportScreen" class="screen hidden" role="region" aria-label="Sales report">
       <header>
         <button id="reportBackBtn" class="icon-btn" aria-label="Back">
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -247,7 +250,7 @@
     </div>
 
     <!-- 50/50 Draw screen -->
-    <div id="drawScreen" class="screen hidden">
+    <div id="drawScreen" class="screen hidden" role="region" aria-label="50/50 draw">
       <header>
         <button id="drawBackBtn" class="icon-btn" aria-label="Back">
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -298,7 +301,7 @@
     </div>
 
     <!-- Inventory edit screen -->
-    <div id="inventoryScreen" class="screen hidden">
+    <div id="inventoryScreen" class="screen hidden" role="region" aria-label="Edit inventory">
       <header>
         <button id="invBackBtn" class="icon-btn" aria-label="Back">
           <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -308,7 +311,7 @@
       </header>
       <div class="inv-edit-content">
         <div class="inv-edit-row">
-          <label>Early Bird Ticket</label>
+          <label for="invEarlyBird">Early Bird Ticket</label>
           <div class="inv-edit-controls">
             <button class="qty-btn inv-minus" data-target="invEarlyBird">-</button>
             <input type="number" id="invEarlyBird" class="inv-input" min="0" inputmode="numeric">
@@ -316,7 +319,7 @@
           </div>
         </div>
         <div class="inv-edit-row">
-          <label>GA Ticket</label>
+          <label for="invGA">GA Ticket</label>
           <div class="inv-edit-controls">
             <button class="qty-btn inv-minus" data-target="invGA">-</button>
             <input type="number" id="invGA" class="inv-input" min="0" inputmode="numeric">
@@ -324,7 +327,7 @@
           </div>
         </div>
         <div class="inv-edit-row">
-          <label>Door Ticket</label>
+          <label for="invDoor">Door Ticket</label>
           <div class="inv-edit-controls">
             <button class="qty-btn inv-minus" data-target="invDoor">-</button>
             <input type="number" id="invDoor" class="inv-input" min="0" inputmode="numeric">
@@ -344,10 +347,10 @@
   </div>
 
   <!-- Expense modal -->
-    <div id="expenseModal" class="modal hidden">
+    <div id="expenseModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="expenseModalTitle">
       <div class="modal-content expense-modal-content">
         <div class="modal-header">
-          <h2>Log Expense</h2>
+          <h2 id="expenseModalTitle">Log Expense</h2>
           <button id="closeExpense" class="close-btn">&times;</button>
         </div>
         <div class="expense-display" id="expenseDisplay">$0.00</div>
@@ -363,7 +366,7 @@
           <button class="numpad-btn" data-val="9">9</button>
           <button class="numpad-btn" data-val=".">.</button>
           <button class="numpad-btn" data-val="0">0</button>
-          <button class="numpad-btn numpad-del" data-val="del">&larr;</button>
+          <button class="numpad-btn numpad-del" data-val="del" aria-label="Delete">&larr;</button>
         </div>
         <div class="expense-categories">
           <button class="expense-cat-btn" data-category="Advertising">Advertising</button>
@@ -377,10 +380,10 @@
     </div>
 
   <!-- Admin password modal (for cash) -->
-    <div id="adminModal" class="modal hidden">
+    <div id="adminModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle">
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Admin Required</h2>
+          <h2 id="adminModalTitle">Admin Required</h2>
           <button id="closeAdmin" class="close-btn">&times;</button>
         </div>
         <p class="cash-confirm-text">Enter admin password to continue</p>
@@ -391,13 +394,13 @@
     </div>
 
   <!-- Toast notification -->
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast hidden" role="alert" aria-live="assertive"></div>
 
   <!-- Offline banner -->
   <div id="offlineBanner" class="offline-banner hidden">No connection</div>
 
   <!-- Confirm modal (replaces native confirm()) -->
-  <div id="confirmModal" class="modal hidden">
+  <div id="confirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="confirmTitle">Confirm</h2>
@@ -412,10 +415,10 @@
   </div>
 
   <!-- Sales Breakdown Modal -->
-  <div id="salesBreakdownModal" class="modal hidden">
+  <div id="salesBreakdownModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="breakdownModalTitle">
     <div class="modal-content breakdown-modal-content">
       <div class="modal-header">
-        <h2>Sales Breakdown</h2>
+        <h2 id="breakdownModalTitle">Sales Breakdown</h2>
         <button id="closeBreakdown" class="close-btn">&times;</button>
       </div>
       <div id="breakdownContent" class="breakdown-content"></div>

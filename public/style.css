@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,600;0,700;1,600&display=swap');
+/* Poppins font loaded via <link> in index.html for faster first paint */
 
 * {
   margin: 0;
@@ -12,6 +12,8 @@
   --black: #0e0b16;
   --dark-grey: #646464;
   --mid-grey: #929292;
+  --mid-grey-readable: #B0B0B0;
+  --modal-bg: #1a1025;
   --light-grey: #D9D9D9;
   --white: #FFFFFF;
   --success: #22c55e;
@@ -26,9 +28,7 @@ body {
   color: var(--light-grey);
   min-height: 100vh;
   min-height: -webkit-fill-available;
-  overflow: hidden;
-  user-select: none;
-  -webkit-user-select: none;
+  overflow-x: hidden;
 }
 
 #app {
@@ -51,7 +51,7 @@ header {
 }
 
 header h1 {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: var(--white);
@@ -113,6 +113,8 @@ main {
   background: var(--light-grey);
   border: 1px solid var(--mid-grey);
   border-radius: 12px;
+  user-select: none;
+  -webkit-user-select: none;
   color: var(--dark-grey);
   padding: 14px 8px;
   text-align: center;
@@ -132,7 +134,7 @@ main {
 .product-btn .qty {
   font-size: 13px;
   font-weight: 600;
-  color: var(--dark-grey);
+  color: #333333;
 }
 
 .product-btn .price {
@@ -144,7 +146,7 @@ main {
 .product-btn .label {
   font-size: 11px;
   font-weight: 400;
-  color: var(--dark-grey);
+  color: #333333;
 }
 
 /* Inventory remaining badges */
@@ -179,6 +181,8 @@ main {
   background: var(--light-grey);
   border: 1px solid var(--mid-grey);
   border-radius: 12px;
+  user-select: none;
+  -webkit-user-select: none;
   color: var(--dark-grey);
   padding: 14px 20px;
   text-align: center;
@@ -205,7 +209,7 @@ main {
 .door-btn .label {
   font-size: 13px;
   font-weight: 400;
-  color: var(--dark-grey);
+  color: #333333;
 }
 
 .qty-selector {
@@ -231,6 +235,8 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .qty-btn:active {
@@ -259,13 +265,13 @@ main {
   border-radius: 14px;
   padding: 12px 16px;
   margin-bottom: 8px;
-  max-height: 140px;
+  max-height: 30vh;
   overflow-y: auto;
 }
 
 .cart-empty {
   text-align: center;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   font-size: 13px;
   padding: 8px 0;
 }
@@ -357,6 +363,8 @@ main {
   gap: 8px;
   border: none;
   border-radius: 14px;
+  user-select: none;
+  -webkit-user-select: none;
   font-family: 'Poppins', sans-serif;
   font-size: 15px;
   font-weight: 700;
@@ -437,7 +445,7 @@ main {
 }
 
 .modal-content {
-  background: #1a1025;
+  background: var(--modal-bg);
   border-radius: 20px 20px 0 0;
   padding: 24px 20px;
   padding-bottom: calc(24px + var(--safe-bottom));
@@ -468,7 +476,11 @@ main {
   color: var(--mid-grey);
   font-size: 28px;
   cursor: pointer;
-  padding: 4px 8px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-amount {
@@ -586,7 +598,7 @@ main {
 
 .txn-date {
   font-size: 12px;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
 }
 
 .txn-right {
@@ -623,7 +635,7 @@ main {
 
 .loading {
   text-align: center;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   padding: 40px;
   font-size: 13px;
 }
@@ -697,6 +709,8 @@ main {
   font-family: 'Poppins', sans-serif;
   cursor: pointer;
   transition: background 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .numpad-btn:active {
@@ -751,10 +765,10 @@ main {
 
 /* Success method label */
 .success-method {
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  color: var(--mid-grey) !important;
-  margin-bottom: 32px !important;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mid-grey-readable);
+  margin-bottom: 32px;
 }
 
 /* Transaction method badges */
@@ -800,7 +814,7 @@ main {
 .report-total-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 4px;
@@ -872,7 +886,7 @@ main {
 
 .report-card-count {
   font-size: 12px;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
 }
 
 .report-card-amount {
@@ -899,7 +913,7 @@ main {
 .section-remaining {
   font-size: 12px;
   font-weight: 400;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   margin-left: 6px;
 }
 
@@ -967,10 +981,10 @@ main {
 }
 
 .tickets-label {
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  color: var(--mid-grey) !important;
-  margin-bottom: 8px !important;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mid-grey-readable);
+  margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -994,9 +1008,9 @@ main {
 }
 
 .email-sent-note {
-  font-size: 12px !important;
-  color: var(--mid-grey) !important;
-  margin: 4px 0 0 !important;
+  font-size: 12px;
+  color: var(--mid-grey-readable);
+  margin: 4px 0 0;
 }
 
 /* 50/50 ticket stats in report */
@@ -1021,7 +1035,7 @@ main {
 }
 
 .expense-amount {
-  color: #ef4444 !important;
+  color: #ef4444;
 }
 
 /* Inventory edit screen */
@@ -1111,7 +1125,7 @@ main {
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 12px;
-  color: var(--text);
+  color: var(--light-grey);
   text-align: center;
 }
 
@@ -1146,7 +1160,7 @@ main {
 
 .amount-refunded {
   text-decoration: line-through;
-  color: var(--mid-grey) !important;
+  color: var(--mid-grey-readable);
 }
 
 .txn-status.refunded {
@@ -1160,7 +1174,7 @@ main {
   bottom: calc(20px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
-  background: #1a1025;
+  background: var(--modal-bg);
   border: 1px solid rgba(239,68,68,0.3);
   color: var(--danger);
   font-family: 'Poppins', sans-serif;
@@ -1257,12 +1271,12 @@ main {
 
 .draw-subtitle {
   font-size: 15px;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
 }
 
 .btn-draw {
   background: #facc15;
-  color: #1a1025;
+  color: var(--modal-bg);
   border: none;
   font-size: 17px;
   padding: 18px 16px;
@@ -1316,7 +1330,7 @@ main {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   margin-bottom: 8px;
   animation: fadeIn 0.4s 0.3s both;
 }
@@ -1365,7 +1379,7 @@ main {
 .draw-info-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
 }
 
 .draw-info-value {
@@ -1390,7 +1404,7 @@ main {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   margin-bottom: 4px;
 }
 
@@ -1405,7 +1419,7 @@ main {
 
 .jackpot-detail {
   font-size: 13px;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   margin-top: 4px;
 }
 
@@ -1456,7 +1470,7 @@ main {
 
 .reset-note {
   font-size: 12px;
-  color: var(--mid-grey);
+  color: var(--mid-grey-readable);
   text-align: center;
   margin-top: 8px;
 }
@@ -1512,6 +1526,7 @@ main {
 /* Sales Breakdown Modal */
 .breakdown-modal-content {
   max-width: 360px;
+  margin: 0 auto;
 }
 
 .breakdown-content {
@@ -1572,3 +1587,67 @@ main {
   font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Focus-visible styles */
+.btn:focus-visible,
+.product-btn:focus-visible,
+.door-btn:focus-visible,
+.icon-btn:focus-visible,
+.qty-btn:focus-visible,
+.close-btn:focus-visible,
+.numpad-btn:focus-visible,
+.expense-cat-btn:focus-visible,
+.cart-remove:focus-visible,
+.refund-btn:focus-visible {
+  outline: 2px solid #facc15;
+  outline-offset: 2px;
+}
+
+.form-input:focus-visible,
+.inv-input:focus-visible {
+  outline: 2px solid #facc15;
+  outline-offset: -2px;
+  border-color: #facc15;
+}
+
+/* Hover states (desktop only) */
+@media (hover: hover) {
+  .product-btn:hover { background: #c4c4c4; }
+  .door-btn:hover { background: #c4c4c4; }
+  .btn-primary:hover:not(:disabled) { background: #c4c4c4; }
+  .btn-secondary:hover:not(:disabled) { background: #c4c4c4; }
+  .btn-cash:hover:not(:disabled) { background: #c4c4c4; }
+  .btn-clear:hover:not(:disabled) { background: #c4c4c4; }
+  .btn-applepay:hover:not(:disabled) { background: #222; }
+  .btn-draw:hover { background: #eab308; }
+  .btn-danger:hover { background: #dc2626; }
+  .icon-btn:hover { background: rgba(255,255,255,0.1); }
+  .close-btn:hover { color: var(--light-grey); }
+  .numpad-btn:hover { background: rgba(217,217,217,0.2); }
+  .expense-cat-btn:hover:not(:disabled) { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); }
+  .report-card-clickable:hover { background: rgba(255,255,255,0.08); }
+}
+
+/* Payment button loading spinner */
+.btn-loading {
+  pointer-events: none;
+  position: relative;
+  color: transparent;
+}
+
+.btn-loading svg {
+  visibility: hidden;
+}
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(20,0,56,0.3);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

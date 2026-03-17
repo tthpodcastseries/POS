@@ -365,6 +365,87 @@ async function sendWinnerEmail(email, name, ticketNumber, jackpotAmount) {
   }
 }
 
+// Send sale notification email to fundraising
+async function sendSaleNotificationEmail(txId, amount, description, method, buyerName, buyerEmail, ticketNumbers) {
+  try {
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-CA', { timeZone: 'America/Toronto', dateStyle: 'medium', timeStyle: 'short' });
+
+    // Parse description into line items
+    const items = description ? description.split(', ') : [];
+    const itemRows = items.map(item => {
+      const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+      if (match) {
+        return `<tr><td style="padding:6px 12px;border-bottom:1px solid #2a1060;color:#d9d9d9;">${match[1].trim()}</td><td style="padding:6px 12px;border-bottom:1px solid #2a1060;color:#d9d9d9;text-align:center;">${match[2]}</td></tr>`;
+      }
+      return `<tr><td style="padding:6px 12px;border-bottom:1px solid #2a1060;color:#d9d9d9;" colspan="2">${item}</td></tr>`;
+    }).join('');
+
+    const methodLabel = method === 'cash' ? 'Cash' : method === 'applepay' ? 'Apple Pay' : 'Card';
+
+    const ticketSection = ticketNumbers && ticketNumbers.length > 0
+      ? `<tr><td style="padding:6px 12px;color:#929292;">50/50 Ticket Numbers</td><td style="padding:6px 12px;color:#22c55e;text-align:center;">${ticketNumbers.join(', ')}</td></tr>`
+      : '';
+
+    const buyerSection = buyerName || buyerEmail
+      ? `<div style="background:#1a0045;padding:16px;margin:0 16px 12px;border-radius:8px;">
+           <p style="margin:0 0 4px;color:#929292;font-size:13px;">Buyer Info</p>
+           ${buyerName ? `<p style="margin:0 0 2px;color:#d9d9d9;">${buyerName}</p>` : ''}
+           ${buyerEmail ? `<p style="margin:0;color:#d9d9d9;font-size:14px;">${buyerEmail}</p>` : ''}
+         </div>`
+      : '';
+
+    const { data, error } = await resend.emails.send({
+      from: 'TTH POS <5050@tthpods.com>',
+      to: 'fundraising@tthpods.com',
+      subject: `Sale Completed - $${parseFloat(amount).toFixed(2)} CAD (${methodLabel})`,
+      html: `
+        <div style="font-family:'Poppins',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#140038;color:#d9d9d9;border-radius:12px;overflow:hidden;">
+          <div style="padding:30px 24px 16px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0 0 4px;font-size:22px;">Sale Notification</h1>
+            <p style="color:#929292;margin:0;font-size:13px;">${timestamp} ET</p>
+          </div>
+          <div style="background:#1a0045;padding:16px;margin:0 16px 12px;border-radius:8px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="padding:6px 12px;text-align:left;color:#929292;font-size:13px;border-bottom:2px solid #2a1060;">Item</th>
+                  <th style="padding:6px 12px;text-align:center;color:#929292;font-size:13px;border-bottom:2px solid #2a1060;">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemRows}
+                ${ticketSection}
+              </tbody>
+            </table>
+          </div>
+          <div style="background:#1a0045;padding:16px;margin:0 16px 12px;border-radius:8px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="padding:6px 12px;color:#929292;">Total</td><td style="padding:6px 12px;color:#ffffff;font-weight:bold;text-align:right;font-size:18px;">$${parseFloat(amount).toFixed(2)} CAD</td></tr>
+              <tr><td style="padding:6px 12px;color:#929292;">Payment Method</td><td style="padding:6px 12px;color:#d9d9d9;text-align:right;">${methodLabel}</td></tr>
+              <tr><td style="padding:6px 12px;color:#929292;">Transaction ID</td><td style="padding:6px 12px;color:#929292;text-align:right;font-size:11px;">${txId}</td></tr>
+            </table>
+          </div>
+          ${buyerSection}
+          <div style="padding:16px 24px;text-align:center;">
+            <p style="color:#646464;font-size:11px;margin:0;">TTH POS - Automated Sale Notification</p>
+          </div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error('Sale notification email error:', error);
+      return false;
+    }
+    console.log('Sale notification sent to fundraising@tthpods.com - tx:', txId, '- id:', data?.id);
+    return true;
+  } catch (err) {
+    console.error('Error sending sale notification email:', err.message);
+    return false;
+  }
+}
+
 // After a successful payment, handle 50/50 ticket assignment + email
 async function handle5050IfNeeded(description, email, amount, txId, buyerInfo = {}) {
   const ticketCount = count5050Tickets(description);
@@ -513,6 +594,11 @@ app.post('/api/create-payment', requireAuth, async (req, res) => {
     // Handle 50/50 ticket assignment + email
     const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
 
+    // Fire-and-forget sale notification to fundraising
+    sendSaleNotificationEmail(txId, amount, description, method || 'card', buyerName, email, ticketResult.ticketNumbers).catch(err => {
+      console.error('Sale notification email failed:', err.message);
+    });
+
     res.json({
       paymentId: txId,
       status: payment.status,
@@ -579,6 +665,11 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
 
     // Handle 50/50 ticket assignment + email
     const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
+
+    // Fire-and-forget sale notification to fundraising
+    sendSaleNotificationEmail(txId, amount, description, 'cash', buyerName, email, ticketResult.ticketNumbers).catch(err => {
+      console.error('Sale notification email failed:', err.message);
+    });
 
     res.json({
       status: 'succeeded',

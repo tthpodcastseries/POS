@@ -12,6 +12,48 @@
   let cartIdCounter = 0;
   let expenseValue = '';
 
+  // --- Modal focus trapping ---
+  let activeModalStack = [];
+  let previousFocusEl = null;
+
+  function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    previousFocusEl = document.activeElement;
+    modal.classList.remove('hidden');
+    activeModalStack.push(modalId);
+    // Focus first focusable element
+    const focusable = modal.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length) setTimeout(() => focusable[0].focus(), 100);
+    modal._trapHandler = (e) => {
+      if (e.key === 'Tab') {
+        const nodes = modal.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])');
+        if (nodes.length === 0) return;
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+      if (e.key === 'Escape') closeModal(modalId);
+    };
+    modal.addEventListener('keydown', modal._trapHandler);
+  }
+
+  function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (modal._trapHandler) {
+      modal.removeEventListener('keydown', modal._trapHandler);
+      modal._trapHandler = null;
+    }
+    activeModalStack = activeModalStack.filter(id => id !== modalId);
+    if (previousFocusEl && activeModalStack.length === 0) {
+      previousFocusEl.focus();
+      previousFocusEl = null;
+    }
+  }
+
   // Haptic feedback helper
   function haptic() {
     if (navigator.vibrate) navigator.vibrate(10);
@@ -35,10 +77,10 @@
       const okBtn = document.getElementById('confirmOk');
       okBtn.textContent = okLabel || 'Confirm';
       okBtn.className = 'btn btn-primary' + (isDanger ? ' btn-danger' : '');
-      document.getElementById('confirmModal').classList.remove('hidden');
+      openModal('confirmModal');
 
       function cleanup(result) {
-        document.getElementById('confirmModal').classList.add('hidden');
+        closeModal('confirmModal');
         okBtn.removeEventListener('click', onOk);
         document.getElementById('confirmCancel').removeEventListener('click', onCancel);
         document.getElementById('closeConfirm').removeEventListener('click', onCancel);
@@ -237,7 +279,7 @@
         </div>
         <div class="cart-item-right">
           <span class="cart-item-price">$${item.price.toFixed(2)}</span>
-          <button class="cart-remove" data-id="${item.id}">&times;</button>
+          <button class="cart-remove" data-id="${item.id}" aria-label="Remove ${escapeHtml(item.product)}">&times;</button>
         </div>
       </div>
     `
@@ -311,7 +353,7 @@
     });
 
     document.getElementById('closePayment').addEventListener('click', () => {
-      document.getElementById('paymentModal').classList.add('hidden');
+      closeModal('paymentModal');
     });
 
     document.getElementById('payBtn').addEventListener('click', handleCardPayment);
@@ -340,14 +382,14 @@
     });
 
     document.getElementById('closeCash').addEventListener('click', () => {
-      document.getElementById('cashModal').classList.add('hidden');
+      closeModal('cashModal');
     });
 
     document.getElementById('confirmCashBtn').addEventListener('click', handleCashPayment);
 
     // --- Email modal ---
     document.getElementById('closeEmail').addEventListener('click', () => {
-      document.getElementById('emailModal').classList.add('hidden');
+      closeModal('emailModal');
       pendingPaymentType = null;
     });
 
@@ -365,7 +407,7 @@
 
     // --- Admin password modal ---
     document.getElementById('closeAdmin').addEventListener('click', () => {
-      document.getElementById('adminModal').classList.add('hidden');
+      closeModal('adminModal');
     });
     document.getElementById('confirmAdminBtn').addEventListener('click', handleAdminConfirm);
     document.getElementById('adminPasswordInput').addEventListener('keydown', (e) => {
@@ -383,7 +425,7 @@
 
     // --- Expense modal ---
     document.getElementById('closeExpense').addEventListener('click', () => {
-      document.getElementById('expenseModal').classList.add('hidden');
+      closeModal('expenseModal');
       expenseValue = '';
     });
 
@@ -416,7 +458,7 @@
 
     // --- New sale ---
     document.getElementById('newSaleBtn').addEventListener('click', () => {
-      document.getElementById('successOverlay').classList.add('hidden');
+      closeModal('successOverlay');
     });
 
     // --- History (admin locked) ---
@@ -434,7 +476,7 @@
       showAdminModal();
     });
     document.getElementById('closeBreakdown').addEventListener('click', () => {
-      document.getElementById('salesBreakdownModal').classList.add('hidden');
+      closeModal('salesBreakdownModal');
     });
     document.getElementById('reportBackBtn').addEventListener('click', () => {
       document.getElementById('reportScreen').classList.add('hidden');
@@ -520,7 +562,7 @@
     document.getElementById('buyerPhone').value = '';
     document.getElementById('buyerNewsletter').checked = false;
     document.getElementById('email-errors').textContent = '';
-    document.getElementById('emailModal').classList.remove('hidden');
+    openModal('emailModal');
     setTimeout(() => document.getElementById('buyerFirstName').focus(), 300);
   }
 
@@ -547,7 +589,7 @@
     buyerEmail = email;
     buyerPhone = phone;
     buyerNewsletter = newsletter;
-    document.getElementById('emailModal').classList.add('hidden');
+    closeModal('emailModal');
 
     if (pendingPaymentType === 'card') {
       openCardModal();
@@ -562,20 +604,20 @@
   function openCardModal() {
     const total = getTotal();
     document.getElementById('modalAmount').textContent = total.toFixed(2);
-    document.getElementById('paymentModal').classList.remove('hidden');
+    openModal('paymentModal');
   }
 
   function openCashModal() {
     const total = getTotal();
     document.getElementById('cashAmount').textContent = total.toFixed(2);
-    document.getElementById('cashModal').classList.remove('hidden');
+    openModal('cashModal');
   }
 
   // --- Admin Password for Cash ---
   function showAdminModal() {
     document.getElementById('adminPasswordInput').value = '';
     document.getElementById('admin-errors').textContent = '';
-    document.getElementById('adminModal').classList.remove('hidden');
+    openModal('adminModal');
     setTimeout(() => document.getElementById('adminPasswordInput').focus(), 300);
   }
 
@@ -598,7 +640,7 @@
         document.getElementById('admin-errors').textContent = 'Incorrect password';
         return;
       }
-      document.getElementById('adminModal').classList.add('hidden');
+      closeModal('adminModal');
       // Password verified - route to appropriate flow
       const flow = pendingPaymentType;
       pendingPaymentType = null;
@@ -636,7 +678,7 @@
     expenseValue = '';
     updateExpenseDisplay();
     document.getElementById('expense-errors').textContent = '';
-    document.getElementById('expenseModal').classList.remove('hidden');
+    openModal('expenseModal');
   }
 
   function updateExpenseDisplay() {
@@ -662,7 +704,7 @@
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      document.getElementById('expenseModal').classList.add('hidden');
+      closeModal('expenseModal');
       expenseValue = '';
       showToast(`Expense logged: $${amount.toFixed(2)} - ${category}`, 'success', 3000);
     } catch (err) {
@@ -698,6 +740,7 @@
     const payBtn = document.getElementById('payBtn');
     payBtn.disabled = true;
     payBtn.textContent = 'Processing...';
+    payBtn.classList.add('btn-loading');
     document.getElementById('card-errors').textContent = '';
 
     if (!card) {
@@ -748,7 +791,7 @@
         return;
       }
 
-      document.getElementById('paymentModal').classList.add('hidden');
+      closeModal('paymentModal');
       refreshInventory();
       showSuccess(total, 'Card', data.ticketNumbers, data.emailSent);
     } catch (err) {
@@ -756,6 +799,7 @@
     } finally {
       payBtn.disabled = false;
       payBtn.textContent = 'Pay Now';
+      payBtn.classList.remove('btn-loading');
     }
   }
 
@@ -766,6 +810,7 @@
 
     const applePayBtn = document.getElementById('applePayBtn');
     applePayBtn.disabled = true;
+    applePayBtn.classList.add('btn-loading');
 
     try {
       // Create a fresh payment request with the current total
@@ -807,6 +852,7 @@
       showToast('Apple Pay error: ' + err.message);
     } finally {
       applePayBtn.disabled = !applePaySupported;
+      applePayBtn.classList.remove('btn-loading');
     }
   }
 
@@ -816,6 +862,7 @@
     const btn = document.getElementById('confirmCashBtn');
     btn.disabled = true;
     btn.textContent = 'Recording...';
+    btn.classList.add('btn-loading');
 
     try {
       const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
@@ -831,15 +878,16 @@
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      document.getElementById('cashModal').classList.add('hidden');
+      closeModal('cashModal');
       refreshInventory();
       showSuccess(total, 'Cash', data.ticketNumbers, data.emailSent);
     } catch (err) {
-      document.getElementById('cashModal').classList.add('hidden');
+      closeModal('cashModal');
       showToast('Cash error: ' + err.message);
     } finally {
       btn.disabled = false;
       btn.textContent = 'Confirm Cash Received';
+      btn.classList.remove('btn-loading');
     }
   }
 
@@ -864,7 +912,7 @@
       ticketsDiv.style.display = 'none';
     }
 
-    document.getElementById('successOverlay').classList.remove('hidden');
+    openModal('successOverlay');
     clearCart();
     refreshJackpot();
   }
@@ -1120,7 +1168,7 @@
               <span class="breakdown-amount">$${apTotal}</span>
             </div>
           `;
-          document.getElementById('salesBreakdownModal').classList.remove('hidden');
+          openModal('salesBreakdownModal');
         });
       }
     } catch (err) {
@@ -1190,8 +1238,9 @@
     }
   }
 
-  // Only poll inventory when checkout screen is visible (no overlapping screens open)
+  // Consolidated polling - inventory + jackpot, paused when page hidden
   setInterval(() => {
+    if (document.hidden) return;
     const historyVisible = !document.getElementById('historyScreen').classList.contains('hidden');
     const reportVisible = !document.getElementById('reportScreen').classList.contains('hidden');
     const inventoryVisible = !document.getElementById('inventoryScreen').classList.contains('hidden');
@@ -1199,7 +1248,8 @@
     if (!historyVisible && !reportVisible && !inventoryVisible && !drawVisible) {
       refreshInventory();
     }
-  }, 10000);
+    refreshJackpot();
+  }, 15000);
 
   // --- 50/50 Jackpot ---
   async function refreshJackpot() {
@@ -1216,9 +1266,8 @@
     } catch (e) { /* ignore */ }
   }
 
-  // Refresh jackpot on load and every 10s
+  // Refresh jackpot on load (ongoing refresh handled by consolidated poll above)
   refreshJackpot();
-  setInterval(refreshJackpot, 10000);
 
   // --- 50/50 Draw ---
   let drawInProgress = false;
@@ -1311,7 +1360,8 @@
   async function reallocateTickets(from, to) {
     const status = document.getElementById('reallocate-status');
     status.textContent = '';
-    if (!confirm(`Move ALL remaining ${from} tickets to ${to}?`)) return;
+    const ok = await showConfirm('Reallocate Tickets', `Move ALL remaining ${from} tickets to ${to}?`, 'Move');
+    if (!ok) return;
     try {
       const res = await authPost('/api/inventory/reallocate', { from, to });
       const data = await res.json();
