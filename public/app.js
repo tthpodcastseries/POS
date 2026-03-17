@@ -204,9 +204,14 @@
     });
   }
 
-  // --- Check if cart needs buyer info (50/50 tickets or Door tickets) ---
+  // --- Check if cart needs buyer info (any tickets) ---
   function cartNeedsBuyerInfo() {
-    return cart.some(item => item.product === '50/50 Tickets' || item.product === 'Door Tickets');
+    return cart.some(item =>
+      item.product === '50/50 Tickets' ||
+      item.product === 'Door Tickets' ||
+      item.product === 'Early Bird Ticket' ||
+      item.product === 'GA Ticket'
+    );
   }
 
   // --- Cart ---
@@ -793,7 +798,7 @@
 
       closeModal('paymentModal');
       refreshInventory();
-      showSuccess(total, 'Card', data.ticketNumbers, data.emailSent);
+      showSuccess(total, 'Card', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
     } catch (err) {
       document.getElementById('card-errors').textContent = err.message;
     } finally {
@@ -847,7 +852,7 @@
       }
 
       refreshInventory();
-      showSuccess(total, 'Apple Pay', data.ticketNumbers, data.emailSent);
+      showSuccess(total, 'Apple Pay', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
     } catch (err) {
       showToast('Apple Pay error: ' + err.message);
     } finally {
@@ -880,7 +885,7 @@
 
       closeModal('cashModal');
       refreshInventory();
-      showSuccess(total, 'Cash', data.ticketNumbers, data.emailSent);
+      showSuccess(total, 'Cash', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
     } catch (err) {
       closeModal('cashModal');
       showToast('Cash error: ' + err.message);
@@ -892,7 +897,7 @@
   }
 
   // --- Success ---
-  function showSuccess(amount, method, ticketNumbers, emailSent) {
+  function showSuccess(amount, method, ticketNumbers, emailSent, eventTickets, eventEmailSent) {
     document.getElementById('successAmount').textContent = '$' + amount.toFixed(2);
     document.getElementById('successMethod').textContent = method ? 'Paid via ' + method : '';
 
@@ -900,13 +905,33 @@
     const ticketListDiv = document.getElementById('ticketNumberList');
     const emailNote = document.getElementById('emailSentNote');
 
-    if (ticketNumbers && ticketNumbers.length > 0) {
-      ticketListDiv.innerHTML = ticketNumbers
-        .map(n => `<span class="ticket-number">${n}</span>`)
-        .join('');
-      emailNote.textContent = emailSent
-        ? 'Ticket numbers emailed to ' + buyerEmail
-        : 'Email could not be sent - please note these numbers';
+    const has5050 = ticketNumbers && ticketNumbers.length > 0;
+    const hasEvent = eventTickets && eventTickets.length > 0;
+
+    if (has5050 || hasEvent) {
+      let html = '';
+
+      if (has5050) {
+        html += '<p class="tickets-label">50/50 Ticket Numbers:</p>';
+        html += ticketNumbers.map(n => `<span class="ticket-number">${n}</span>`).join('');
+      }
+
+      if (hasEvent) {
+        html += '<p class="tickets-label" style="margin-top:12px;">Event Ticket Numbers:</p>';
+        html += eventTickets.map(t => `<span class="ticket-number">${t.ticketNumber}</span>`).join('');
+      }
+
+      ticketListDiv.innerHTML = html;
+
+      const emailParts = [];
+      if (has5050 && emailSent) emailParts.push('50/50 tickets');
+      if (hasEvent && eventEmailSent) emailParts.push('event tickets');
+      if (emailParts.length > 0) {
+        emailNote.textContent = emailParts.join(' and ') + ' emailed to ' + buyerEmail;
+      } else {
+        emailNote.textContent = 'Email could not be sent - please note these numbers';
+      }
+
       ticketsDiv.style.display = 'block';
     } else {
       ticketsDiv.style.display = 'none';

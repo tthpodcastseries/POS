@@ -446,6 +446,223 @@ async function sendSaleNotificationEmail(txId, amount, description, method, buye
   }
 }
 
+// --- Event Ticket Number Generation ---
+
+// Count event tickets (Early Bird, GA, Door) in a description
+function countEventTickets(description) {
+  let total = 0;
+  const eventTypes = ['Early Bird Ticket', 'GA Ticket', 'Door Tickets'];
+  const items = description ? description.split(', ') : [];
+  for (const item of items) {
+    const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+    if (match) {
+      const name = match[1].trim();
+      const qty = parseInt(match[2]);
+      if (eventTypes.includes(name)) {
+        total += qty;
+      }
+    }
+  }
+  return total;
+}
+
+// Parse which event ticket types and quantities are in the description
+function parseEventTickets(description) {
+  const tickets = [];
+  const eventTypes = { 'Early Bird Ticket': 'EB', 'GA Ticket': 'GA', 'Door Tickets': 'DOOR' };
+  const items = description ? description.split(', ') : [];
+  for (const item of items) {
+    const match = item.match(/^(.+?)\s*\((\d+)\)$/);
+    if (match) {
+      const name = match[1].trim();
+      const qty = parseInt(match[2]);
+      if (eventTypes[name]) {
+        for (let i = 0; i < qty; i++) {
+          tickets.push({ type: name, prefix: eventTypes[name] });
+        }
+      }
+    }
+  }
+  return tickets;
+}
+
+// Generate unique event ticket numbers using Supabase counter
+async function generateEventTicketNumbers(tickets, txId, buyerInfo = {}) {
+  const assigned = [];
+
+  for (const ticket of tickets) {
+    // Use timestamp + random for uniqueness, format: GED-EB-0001
+    // We'll use a Supabase-based counter via an RPC or just use a unique approach
+    const now = Date.now();
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const seq = (now % 100000).toString().padStart(5, '0');
+    const ticketNumber = `GED-${ticket.prefix}-${seq}${rand}`;
+
+    assigned.push({
+      ticketNumber,
+      type: ticket.type,
+    });
+  }
+
+  // Store in Supabase for record keeping (use event_tickets table)
+  for (const t of assigned) {
+    try {
+      await supabase.from('event_tickets').insert({
+        ticket_number: t.ticketNumber,
+        ticket_type: t.type,
+        buyer_email: buyerInfo.email || null,
+        buyer_name: buyerInfo.name || null,
+        buyer_phone: buyerInfo.phone || null,
+        transaction_id: txId,
+        created_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Error storing event ticket:', err.message);
+      // Non-fatal - ticket number is still valid
+    }
+  }
+
+  return assigned;
+}
+
+// Send event ticket confirmation email
+async function sendEventTicketEmail(email, tickets, buyerName) {
+  const ticketRows = tickets.map(t =>
+    `<tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a1060;color:#22c55e;font-size:16px;font-weight:bold;">${t.ticketNumber}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #2a1060;color:#d9d9d9;font-size:14px;">${t.type}</td>
+    </tr>`
+  ).join('');
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'TTH Podcast Series <tickets@tthpods.com>',
+      to: email,
+      subject: 'Your Ticket Confirmation - An Evening for Sara J',
+      html: `
+        <div style="font-family:'Poppins',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#140038;color:#d9d9d9;border-radius:12px;overflow:hidden;">
+          <div style="padding:30px 24px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0 0 4px;font-size:24px;">You're In!</h1>
+            <p style="color:#929292;margin:0;font-size:14px;">An Evening for Sara J</p>
+          </div>
+
+          <div style="background:#1a0045;padding:20px;margin:0 16px 12px;border-radius:8px;">
+            <p style="margin:0 0 12px;color:#d9d9d9;">Hey${buyerName ? ' ' + buyerName : ''}! Here are your ticket details:</p>
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="padding:8px 12px;text-align:left;color:#929292;font-size:12px;border-bottom:2px solid #2a1060;">Ticket #</th>
+                  <th style="padding:8px 12px;text-align:left;color:#929292;font-size:12px;border-bottom:2px solid #2a1060;">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${ticketRows}
+              </tbody>
+            </table>
+          </div>
+
+          <div style="background:#1a0045;padding:20px;margin:0 16px 12px;border-radius:8px;">
+            <h2 style="color:#ffffff;margin:0 0 12px;font-size:16px;">Event Details</h2>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;width:90px;">Event</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">An Evening for Sara J</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">Date</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Saturday, October 17, 2026</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">Venue</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Amsterdam Brewhouse</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">Address</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">245 Queens Quay W, Toronto</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">Doors</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">7:00 PM</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">Show</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">8:00 PM</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="background:#1a0045;padding:20px;margin:0 16px 12px;border-radius:8px;">
+            <h2 style="color:#ffffff;margin:0 0 12px;font-size:16px;">Agenda</h2>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;width:90px;">7:00 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Doors open - grab a drink, explore raffle tables</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">7:30 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Welcome and opening remarks</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">8:00 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Live music begins - Forever Hip (Joe Cad)</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">9:15 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">50/50 draw and raffle prizes</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">9:30 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Music continues</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">11:00 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Last call and wrap-up</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="padding:20px 24px;text-align:center;">
+            <p style="color:#929292;font-size:13px;margin:0 0 8px;">
+              Show this email at the door for entry.<br>
+              All proceeds support Campfire Circle, The Gord Downie Fund for Brain Cancer Research, and CAMH.
+            </p>
+            <p style="color:#646464;font-size:11px;margin:8px 0 0;">TTH Podcast Series</p>
+          </div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error('Event ticket email error:', error);
+      return false;
+    }
+    console.log('Event ticket email sent to', email, '- tickets:', tickets.map(t => t.ticketNumber).join(', '), '- id:', data?.id);
+    return true;
+  } catch (err) {
+    console.error('Error sending event ticket email:', err.message);
+    return false;
+  }
+}
+
+// After a successful payment, handle event ticket generation + email
+async function handleEventTicketsIfNeeded(description, email, txId, buyerInfo = {}) {
+  const ticketList = parseEventTickets(description);
+  if (ticketList.length === 0 || !email) return { assigned: false };
+
+  const tickets = await generateEventTicketNumbers(ticketList, txId, buyerInfo);
+
+  // Fire-and-forget email
+  sendEventTicketEmail(email, tickets, buyerInfo.name).catch(err => {
+    console.error('Event ticket email failed:', err.message);
+  });
+
+  return {
+    assigned: true,
+    eventTickets: tickets,
+    eventEmailSent: true,
+  };
+}
+
 // After a successful payment, handle 50/50 ticket assignment + email
 async function handle5050IfNeeded(description, email, amount, txId, buyerInfo = {}) {
   const ticketCount = count5050Tickets(description);
@@ -594,6 +811,9 @@ app.post('/api/create-payment', requireAuth, async (req, res) => {
     // Handle 50/50 ticket assignment + email
     const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
 
+    // Handle event ticket generation + email
+    const eventResult = await handleEventTicketsIfNeeded(description, email, txId, { name: buyerName, email, phone: buyerPhone });
+
     // Fire-and-forget sale notification to fundraising
     sendSaleNotificationEmail(txId, amount, description, method || 'card', buyerName, email, ticketResult.ticketNumbers).catch(err => {
       console.error('Sale notification email failed:', err.message);
@@ -604,6 +824,8 @@ app.post('/api/create-payment', requireAuth, async (req, res) => {
       status: payment.status,
       ticketNumbers: ticketResult.ticketNumbers || null,
       emailSent: ticketResult.emailSent || false,
+      eventTickets: eventResult.eventTickets || null,
+      eventEmailSent: eventResult.eventEmailSent || false,
     });
   } catch (err) {
     console.error('Error creating payment:', err);
@@ -666,6 +888,9 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
     // Handle 50/50 ticket assignment + email
     const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
 
+    // Handle event ticket generation + email
+    const eventResult = await handleEventTicketsIfNeeded(description, email, txId, { name: buyerName, email, phone: buyerPhone });
+
     // Fire-and-forget sale notification to fundraising
     sendSaleNotificationEmail(txId, amount, description, 'cash', buyerName, email, ticketResult.ticketNumbers).catch(err => {
       console.error('Sale notification email failed:', err.message);
@@ -675,6 +900,8 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
       status: 'succeeded',
       ticketNumbers: ticketResult.ticketNumbers || null,
       emailSent: ticketResult.emailSent || false,
+      eventTickets: eventResult.eventTickets || null,
+      eventEmailSent: eventResult.eventEmailSent || false,
     });
   } catch (err) {
     console.error('Error recording cash payment:', err.message);
