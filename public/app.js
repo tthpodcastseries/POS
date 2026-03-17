@@ -11,6 +11,7 @@
   let buyerNewsletter = false;
   let cartIdCounter = 0;
   let expenseValue = '';
+  let pendingProduct = null; // for admin-locked product buttons
 
   // --- Modal focus trapping ---
   let activeModalStack = [];
@@ -298,13 +299,20 @@
 
   // --- Events ---
   function bindEvents() {
-    // Product buttons (raffle & 50/50)
+    // Product buttons (raffle, 50/50, event tickets)
+    const adminLockedProducts = ['Raffle Tickets', 'GA Ticket'];
     document.querySelectorAll('.product-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const product = btn.dataset.product;
         const qty = parseInt(btn.dataset.qty);
         const price = parseInt(btn.dataset.price);
-        addToCart(product, qty, price);
+        if (adminLockedProducts.includes(product)) {
+          pendingProduct = { product, qty, price };
+          pendingPaymentType = 'addProduct';
+          showAdminModal();
+        } else {
+          addToCart(product, qty, price);
+        }
       });
     });
 
@@ -329,9 +337,9 @@
     });
 
     document.getElementById('addDoorTicket').addEventListener('click', () => {
-      addToCart('Door Tickets', doorQty, doorQty * 30);
-      doorQty = 1;
-      document.getElementById('doorQty').textContent = 1;
+      pendingProduct = { product: 'Door Tickets', qty: doorQty, price: doorQty * 30 };
+      pendingPaymentType = 'addProduct';
+      showAdminModal();
     });
 
     // Clear cart with confirmation
@@ -649,7 +657,16 @@
       // Password verified - route to appropriate flow
       const flow = pendingPaymentType;
       pendingPaymentType = null;
-      if (flow === 'expense') {
+      if (flow === 'addProduct') {
+        if (pendingProduct) {
+          addToCart(pendingProduct.product, pendingProduct.qty, pendingProduct.price);
+          if (pendingProduct.product === 'Door Tickets') {
+            doorQty = 1;
+            document.getElementById('doorQty').textContent = 1;
+          }
+          pendingProduct = null;
+        }
+      } else if (flow === 'expense') {
         openExpenseModal();
       } else if (flow === 'history') {
         loadHistory();

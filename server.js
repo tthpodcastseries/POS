@@ -600,11 +600,11 @@ async function sendEventTicketEmail(email, tickets, buyerName) {
             <table style="width:100%;border-collapse:collapse;">
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;width:90px;">7:30 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Doors open</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Doors Open</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">8:00 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">jD and Patrick Downie - intimate and interactive live podcast recording</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">jD And Patrick Downie - Intimate And Interactive Live Podcast Recording</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">8:45 PM</td>
@@ -624,11 +624,11 @@ async function sendEventTicketEmail(email, tickets, buyerName) {
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">11:15 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">50/50 and raffle prizes awarded</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">50/50 And Raffle Prizes Awarded</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">11:30 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Lights out</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Lights Out</td>
               </tr>
             </table>
           </div>
