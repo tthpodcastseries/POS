@@ -983,12 +983,15 @@ app.get('/api/report', requireAuth, async (req, res) => {
     const cardTotal = cardTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const applePayTotal = applePayTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
-    // Count raffle and event ticket sales from descriptions
+    // Count raffle, 50/50, and event ticket sales from descriptions
     let raffleSold = 0;
     let raffleRevenue = 0;
+    let fiftyFiftySold = 0;
+    let fiftyFiftyRevenueCalc = 0;
     let eventTicketsSold = 0;
     let eventTicketsRevenue = 0;
     const ticketPrices = { 'Early Bird Ticket': 20, 'GA Ticket': 25, 'Door Tickets': 30 };
+    const fiftyFiftyPrices = { 1: 5, 5: 20, 15: 50, 35: 100 };
     for (const t of succeeded) {
       if (t.description) {
         const items = t.description.split(', ');
@@ -1004,6 +1007,10 @@ app.get('/api/report', requireAuth, async (req, res) => {
             else if (qty === 15) raffleRevenue += 50;
             else if (qty === 35) raffleRevenue += 100;
             else raffleRevenue += qty * 5;
+          } else if (name === '50/50 Tickets') {
+            fiftyFiftySold += qty;
+            if (fiftyFiftyPrices[qty]) fiftyFiftyRevenueCalc += fiftyFiftyPrices[qty];
+            else fiftyFiftyRevenueCalc += qty * 5;
           } else if (ticketPrices[name] !== undefined) {
             eventTicketsSold += qty;
             eventTicketsRevenue += qty * ticketPrices[name];
@@ -1052,7 +1059,7 @@ app.get('/api/report', requireAuth, async (req, res) => {
       applePay: { count: applePayTxns.length, total: applePayTotal.toFixed(2) },
       raffle: { sold: raffleSold, total: raffleRevenue.toFixed(2) },
       eventTickets: { sold: eventTicketsSold, total: eventTicketsRevenue.toFixed(2) },
-      tickets5050: { sold: ticketsSold || 0, available: ticketsAvailable || 0 },
+      tickets5050: { sold: ticketsSold || 0, available: ticketsAvailable || 0, total: fiftyFiftyRevenueCalc.toFixed(2) },
       newsletterSubscribers: newsletterCount || 0,
       transactions: allDisplayable,
     });

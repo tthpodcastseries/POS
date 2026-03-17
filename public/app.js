@@ -1115,6 +1115,7 @@
               <span class="report-card-label">50/50 Tickets</span>
               <span class="report-card-count">${tickets5050.sold} sold / ${tickets5050.available} remaining</span>
             </div>
+            <span class="report-card-amount">$${tickets5050.total || '0.00'}</span>
           </div>
           ${hasExpenses ? `
           <div class="report-card">
