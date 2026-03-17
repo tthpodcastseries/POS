@@ -343,9 +343,13 @@ async function sendWinnerEmail(email, name, ticketNumber, jackpotAmount) {
             <p style="margin:0 0 8px;color:#929292;font-size:14px;">Your prize:</p>
             <p style="margin:0;color:#ffffff;font-size:36px;font-weight:bold;">$${jackpotAmount} CAD</p>
           </div>
+          <div style="background:#1a0045;padding:20px;margin:0 16px 12px;border-radius:8px;text-align:center;">
+            <p style="margin:0 0 8px;color:#929292;font-size:13px;">To arrange payment, contact:</p>
+            <p style="margin:0 0 4px;color:#d9d9d9;font-size:16px;font-weight:600;">jD</p>
+            <a href="mailto:jd@tthpods.com" style="color:#22c55e;font-size:14px;text-decoration:none;">jd@tthpods.com</a>
+          </div>
           <div style="padding:20px 24px;text-align:center;">
             <p style="color:#929292;font-size:13px;margin:0;">
-              Please see the event organizers to claim your prize.<br>
               Thanks for supporting the cause - and congrats again!
             </p>
             <p style="color:#646464;font-size:11px;margin:16px 0 0;">TTH Podcast Series</p>
