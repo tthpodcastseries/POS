@@ -1,5 +1,6 @@
 (() => {
-  let payments, card;
+  let payments, card, applePay;
+  let applePaySupported = false;
   let cart = [];
   let doorQty = 1;
   let appConfig = {};
@@ -113,6 +114,21 @@
       card = await payments.card();
       await card.attach('#card-container');
 
+      // Initialize Apple Pay
+      try {
+        const applePayRequest = payments.paymentRequest({
+          countryCode: 'CA',
+          currencyCode: 'CAD',
+          total: { label: 'TTH Podcast Series', amount: '0.00' },
+        });
+        applePay = await payments.applePay(applePayRequest);
+        applePaySupported = true;
+        console.log('Apple Pay initialized successfully');
+      } catch (apErr) {
+        console.log('Apple Pay not available:', apErr.message);
+        applePaySupported = false;
+      }
+
       refreshInventory();
 
       // Hide loading splash
@@ -205,7 +221,7 @@
     totalEl.style.display = 'flex';
     chargeBtn.disabled = false;
     cashBtn.disabled = false;
-    applePayBtn.disabled = true; // Always disabled for now
+    applePayBtn.disabled = !applePaySupported;
     clearBtn.disabled = false;
 
     const total = getTotal();
@@ -307,9 +323,20 @@
       showAdminModal();
     });
 
-    // --- Apple Pay button (inactive for now) ---
+    // --- Apple Pay button ---
     document.getElementById('applePayBtn').addEventListener('click', () => {
-      showToast('Apple Pay coming soon', 'error', 2500);
+      const total = getTotal();
+      if (total < 1 || !applePaySupported) return;
+      if (cartNeedsBuyerInfo()) {
+        pendingPaymentType = 'applepay';
+        showEmailModal();
+      } else {
+        buyerEmail = '';
+        buyerName = '';
+        buyerPhone = '';
+        buyerNewsletter = false;
+        handleApplePayPayment();
+      }
     });
 
     document.getElementById('closeCash').addEventListener('click', () => {
@@ -526,6 +553,8 @@
       openCardModal();
     } else if (pendingPaymentType === 'cash') {
       openCashModal();
+    } else if (pendingPaymentType === 'applepay') {
+      handleApplePayPayment();
     }
     pendingPaymentType = null;
   }
@@ -727,6 +756,55 @@
     } finally {
       payBtn.disabled = false;
       payBtn.textContent = 'Pay Now';
+    }
+  }
+
+  // --- Apple Pay Payment ---
+  async function handleApplePayPayment() {
+    const total = getTotal();
+    if (total < 1 || !applePay) return;
+
+    const applePayBtn = document.getElementById('applePayBtn');
+    applePayBtn.disabled = true;
+
+    try {
+      // Update the payment request with current total
+      applePay.update({
+        total: { label: 'TTH Podcast Series', amount: total.toFixed(2) },
+      });
+
+      const tokenResult = await applePay.tokenize();
+
+      if (tokenResult.status !== 'OK') {
+        showToast('Apple Pay cancelled or failed');
+        return;
+      }
+
+      const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
+      const res = await authPost('/api/create-payment', {
+        sourceId: tokenResult.token,
+        amount: total,
+        description: getDescription(),
+        method: 'applepay',
+        email: buyerEmail || undefined,
+        buyerName: buyerName || undefined,
+        buyerPhone: buyerPhone || undefined,
+        newsletterOptIn: buyerNewsletter,
+        fiftyFiftyAmount: fiftyFiftyAmount || undefined,
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        showToast('Apple Pay failed: ' + data.error);
+        return;
+      }
+
+      refreshInventory();
+      showSuccess(total, 'Apple Pay', data.ticketNumbers, data.emailSent);
+    } catch (err) {
+      showToast('Apple Pay error: ' + err.message);
+    } finally {
+      applePayBtn.disabled = !applePaySupported;
     }
   }
 
