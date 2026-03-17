@@ -768,12 +768,14 @@
     applePayBtn.disabled = true;
 
     try {
-      // Update the payment request with current total
-      applePay.update({
+      // Create a fresh payment request with the current total
+      const paymentRequest = payments.paymentRequest({
+        countryCode: 'CA',
+        currencyCode: 'CAD',
         total: { label: 'TTH Podcast Series', amount: total.toFixed(2) },
       });
-
-      const tokenResult = await applePay.tokenize();
+      const applePayInstance = await payments.applePay(paymentRequest);
+      const tokenResult = await applePayInstance.tokenize();
 
       if (tokenResult.status !== 'OK') {
         showToast('Apple Pay cancelled or failed');
