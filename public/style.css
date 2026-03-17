@@ -131,6 +131,14 @@ main {
   transform: scale(0.97);
 }
 
+.btn-locked {
+  opacity: 0.4;
+}
+
+.btn-locked:active {
+  opacity: 0.5;
+}
+
 .product-btn .qty {
   font-size: 13px;
   font-weight: 600;
