@@ -186,6 +186,7 @@
     const totalAmountEl = document.getElementById('totalAmount');
     const chargeBtn = document.getElementById('chargeCardBtn');
     const cashBtn = document.getElementById('cashBtn');
+    const applePayBtn = document.getElementById('applePayBtn');
     const clearBtn = document.getElementById('clearCartBtn');
 
     if (cart.length === 0) {
@@ -194,6 +195,7 @@
       totalEl.style.display = 'none';
       chargeBtn.disabled = true;
       cashBtn.disabled = true;
+      applePayBtn.disabled = true;
       clearBtn.disabled = true;
       return;
     }
@@ -202,6 +204,7 @@
     totalEl.style.display = 'flex';
     chargeBtn.disabled = false;
     cashBtn.disabled = false;
+    applePayBtn.disabled = true; // Always disabled for now
     clearBtn.disabled = false;
 
     const total = getTotal();
@@ -296,20 +299,16 @@
 
     document.getElementById('payBtn').addEventListener('click', handleCardPayment);
 
-    // --- Cash button ---
+    // --- Cash button (admin password required) ---
     document.getElementById('cashBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 0.01) return;
-      if (cartNeedsBuyerInfo()) {
-        pendingPaymentType = 'cash';
-        showEmailModal();
-      } else {
-        buyerEmail = '';
-        buyerName = '';
-        buyerPhone = '';
-        buyerNewsletter = false;
-        openCashModal();
-      }
+      showAdminModal();
+    });
+
+    // --- Apple Pay button (inactive for now) ---
+    document.getElementById('applePayBtn').addEventListener('click', () => {
+      showToast('Apple Pay coming soon', 'error', 2500);
     });
 
     document.getElementById('closeCash').addEventListener('click', () => {
@@ -334,6 +333,18 @@
       document.getElementById(id).addEventListener('keydown', (e) => {
         if (e.key === 'Enter') handleEmailConfirm();
       });
+    });
+
+    // --- Admin password modal ---
+    document.getElementById('closeAdmin').addEventListener('click', () => {
+      document.getElementById('adminModal').classList.add('hidden');
+    });
+    document.getElementById('confirmAdminBtn').addEventListener('click', handleAdminConfirm);
+    document.getElementById('adminPasswordInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleAdminConfirm();
+    });
+    document.getElementById('adminPasswordInput').addEventListener('input', () => {
+      document.getElementById('admin-errors').textContent = '';
     });
 
     // --- New sale ---
@@ -510,6 +521,53 @@
     const total = getTotal();
     document.getElementById('cashAmount').textContent = total.toFixed(2);
     document.getElementById('cashModal').classList.remove('hidden');
+  }
+
+  // --- Admin Password for Cash ---
+  function showAdminModal() {
+    document.getElementById('adminPasswordInput').value = '';
+    document.getElementById('admin-errors').textContent = '';
+    document.getElementById('adminModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('adminPasswordInput').focus(), 300);
+  }
+
+  async function handleAdminConfirm() {
+    const password = document.getElementById('adminPasswordInput').value.trim();
+    if (!password) {
+      document.getElementById('admin-errors').textContent = 'Password required';
+      return;
+    }
+    const btn = document.getElementById('confirmAdminBtn');
+    btn.disabled = true;
+    btn.textContent = 'Verifying...';
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) {
+        document.getElementById('admin-errors').textContent = 'Incorrect password';
+        return;
+      }
+      document.getElementById('adminModal').classList.add('hidden');
+      // Password verified - proceed with cash flow
+      if (cartNeedsBuyerInfo()) {
+        pendingPaymentType = 'cash';
+        showEmailModal();
+      } else {
+        buyerEmail = '';
+        buyerName = '';
+        buyerPhone = '';
+        buyerNewsletter = false;
+        openCashModal();
+      }
+    } catch (err) {
+      document.getElementById('admin-errors').textContent = 'Could not verify password';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Continue';
+    }
   }
 
   // --- Card Payment ---
