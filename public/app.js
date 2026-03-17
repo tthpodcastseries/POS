@@ -378,11 +378,21 @@
       showAdminModal();
     });
 
-    // --- Apple Pay button (always goes straight to Apple Pay - contact info comes from wallet) ---
+    // --- Apple Pay button ---
+    // For 50/50 or event tickets, collect buyer info first since Apple Pay contact fields aren't guaranteed
     document.getElementById('applePayBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 1 || !applePaySupported) return;
-      handleApplePayPayment();
+      if (cartNeedsBuyerInfo()) {
+        pendingPaymentType = 'applepay';
+        showEmailModal();
+      } else {
+        buyerEmail = '';
+        buyerName = '';
+        buyerPhone = '';
+        buyerNewsletter = false;
+        handleApplePayPayment();
+      }
     });
 
     document.getElementById('closeCash').addEventListener('click', () => {
@@ -826,16 +836,11 @@
     applePayBtn.classList.add('btn-loading');
 
     try {
-      // Create a fresh payment request with contact info from Apple Pay wallet
+      // Create a fresh payment request with the current total
       const paymentRequest = payments.paymentRequest({
         countryCode: 'CA',
         currencyCode: 'CAD',
         total: { label: 'TTH Podcast Series', amount: total.toFixed(2) },
-        requestBillingContact: true,
-        requestShippingContact: true,
-        shippingContact: {
-          addressLines: [],
-        },
       });
       const applePayInstance = await payments.applePay(paymentRequest);
       const tokenResult = await applePayInstance.tokenize();
@@ -845,36 +850,15 @@
         return;
       }
 
-      // Extract contact info from Apple Pay response
-      const details = tokenResult.details || {};
-      const billing = details.billingContact || {};
-      const shipping = details.shippingContact || {};
-      const contact = shipping.email ? shipping : billing;
-
-      const applePayEmail = contact.email || shipping.email || billing.email || '';
-      const applePayName = [contact.givenName || '', contact.familyName || ''].filter(Boolean).join(' ')
-        || [shipping.givenName || '', shipping.familyName || ''].filter(Boolean).join(' ')
-        || [billing.givenName || '', billing.familyName || ''].filter(Boolean).join(' ')
-        || '';
-      const applePayPhone = contact.phone || shipping.phone || billing.phone || '';
-
-      // Use Apple Pay data, fall back to any previously entered buyer info
-      const finalEmail = applePayEmail || buyerEmail;
-      const finalName = applePayName || buyerName;
-      const finalPhone = applePayPhone || buyerPhone;
-
-      // Store for success screen display
-      if (finalEmail) buyerEmail = finalEmail;
-
       const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
       const res = await authPost('/api/create-payment', {
         sourceId: tokenResult.token,
         amount: total,
         description: getDescription(),
         method: 'applepay',
-        email: finalEmail || undefined,
-        buyerName: finalName || undefined,
-        buyerPhone: finalPhone || undefined,
+        email: buyerEmail || undefined,
+        buyerName: buyerName || undefined,
+        buyerPhone: buyerPhone || undefined,
         newsletterOptIn: buyerNewsletter,
         fiftyFiftyAmount: fiftyFiftyAmount || undefined,
       });
