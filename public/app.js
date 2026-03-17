@@ -12,7 +12,6 @@
   let cartIdCounter = 0;
   let expenseValue = '';
   let pendingProduct = null; // for admin-locked product buttons
-  let pendingApplePayToken = null; // stashed token when Apple Pay needs deferred buyer info
 
   // --- Modal focus trapping ---
   let activeModalStack = [];
@@ -380,12 +379,19 @@
     });
 
     // --- Apple Pay button ---
-    // Always go straight to Apple Pay - contact info is extracted after tokenization
-    // If Apple Pay doesn't provide enough info for tickets, fall back to buyer info modal
     document.getElementById('applePayBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 1 || !applePaySupported) return;
-      handleApplePayPayment();
+      if (cartNeedsBuyerInfo()) {
+        pendingPaymentType = 'applepay';
+        showEmailModal();
+      } else {
+        buyerEmail = '';
+        buyerName = '';
+        buyerPhone = '';
+        buyerNewsletter = false;
+        handleApplePayPayment();
+      }
     });
 
     document.getElementById('closeCash').addEventListener('click', () => {
@@ -604,11 +610,6 @@
       openCashModal();
     } else if (pendingPaymentType === 'applepay') {
       handleApplePayPayment();
-    } else if (pendingPaymentType === 'applepay-deferred') {
-      // Apple Pay already tokenized but needed buyer info - complete the payment now
-      const token = pendingApplePayToken;
-      pendingApplePayToken = null;
-      if (token) completeApplePayPayment(token);
     }
     pendingPaymentType = null;
   }
@@ -834,13 +835,11 @@
     applePayBtn.classList.add('btn-loading');
 
     try {
-      // Request contact info from Apple Pay wallet
+      // Create a fresh payment request with the current total
       const paymentRequest = payments.paymentRequest({
         countryCode: 'CA',
         currencyCode: 'CAD',
         total: { label: 'TTH Podcast Series', amount: total.toFixed(2) },
-        requestBillingContact: true,
-        requestShippingContact: true,
       });
       const applePayInstance = await payments.applePay(paymentRequest);
       const tokenResult = await applePayInstance.tokenize();
@@ -850,44 +849,9 @@
         return;
       }
 
-      // Extract contact info from Apple Pay response
-      const details = tokenResult.details || {};
-      const billing = details.billingContact || {};
-      const shipping = details.shippingContact || {};
-
-      const apEmail = shipping.email || billing.email || '';
-      const apName = [shipping.givenName || billing.givenName || '', shipping.familyName || billing.familyName || ''].filter(Boolean).join(' ');
-      const apPhone = shipping.phone || billing.phone || '';
-
-      // Use Apple Pay data if available, otherwise keep any previously entered info
-      if (apEmail) buyerEmail = apEmail;
-      if (apName) buyerName = apName;
-      if (apPhone) buyerPhone = apPhone;
-
-      // If cart needs buyer info and Apple Pay didn't provide email+name, stash the token and show modal
-      if (cartNeedsBuyerInfo() && (!buyerEmail || !buyerName)) {
-        pendingApplePayToken = tokenResult.token;
-        pendingPaymentType = 'applepay-deferred';
-        showEmailModal();
-        return;
-      }
-
-      await completeApplePayPayment(tokenResult.token);
-    } catch (err) {
-      showToast('Apple Pay error: ' + err.message);
-    } finally {
-      applePayBtn.disabled = !applePaySupported;
-      applePayBtn.classList.remove('btn-loading');
-    }
-  }
-
-  // Complete Apple Pay payment with token (called directly or after deferred modal)
-  async function completeApplePayPayment(token) {
-    const total = getTotal();
-    try {
       const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
       const res = await authPost('/api/create-payment', {
-        sourceId: token,
+        sourceId: tokenResult.token,
         amount: total,
         description: getDescription(),
         method: 'applepay',
@@ -908,6 +872,9 @@
       showSuccess(total, 'Apple Pay', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
     } catch (err) {
       showToast('Apple Pay error: ' + err.message);
+    } finally {
+      applePayBtn.disabled = !applePaySupported;
+      applePayBtn.classList.remove('btn-loading');
     }
   }
 
