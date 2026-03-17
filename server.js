@@ -574,19 +574,19 @@ async function sendEventTicketEmail(email, tickets, buyerName) {
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">Date</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Saturday, October 17, 2026</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Saturday, April 11, 2026</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">Venue</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Amsterdam Brewhouse</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">The Firkin on Yonge</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">Address</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">245 Queens Quay W, Toronto</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">207 Yonge St, Toronto, ON</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">Doors</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">7:00 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">7:30 PM</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">Show</td>
@@ -599,28 +599,36 @@ async function sendEventTicketEmail(email, tickets, buyerName) {
             <h2 style="color:#ffffff;margin:0 0 12px;font-size:16px;">Agenda</h2>
             <table style="width:100%;border-collapse:collapse;">
               <tr>
-                <td style="padding:6px 0;color:#929292;font-size:13px;width:90px;">7:00 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Doors open - grab a drink, explore raffle tables</td>
-              </tr>
-              <tr>
-                <td style="padding:6px 0;color:#929292;font-size:13px;">7:30 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Welcome and opening remarks</td>
+                <td style="padding:6px 0;color:#929292;font-size:13px;width:90px;">7:30 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Doors open</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#929292;font-size:13px;">8:00 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Live music begins - Forever Hip (Joe Cad)</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">jD and Patrick Downie - intimate and interactive live podcast recording</td>
               </tr>
               <tr>
-                <td style="padding:6px 0;color:#929292;font-size:13px;">9:15 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">50/50 draw and raffle prizes</td>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">8:45 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Intermission</td>
               </tr>
               <tr>
-                <td style="padding:6px 0;color:#929292;font-size:13px;">9:30 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Music continues</td>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">9:00 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Forever Hip</td>
               </tr>
               <tr>
-                <td style="padding:6px 0;color:#929292;font-size:13px;">11:00 PM</td>
-                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Last call and wrap-up</td>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">10:00 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Intermission</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">10:15 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Forever Hip</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">11:15 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">50/50 and raffle prizes awarded</td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#929292;font-size:13px;">11:30 PM</td>
+                <td style="padding:6px 0;color:#d9d9d9;font-size:14px;">Lights out</td>
               </tr>
             </table>
           </div>
@@ -628,7 +636,7 @@ async function sendEventTicketEmail(email, tickets, buyerName) {
           <div style="padding:20px 24px;text-align:center;">
             <p style="color:#929292;font-size:13px;margin:0 0 8px;">
               Show this email at the door for entry.<br>
-              All proceeds support Campfire Circle, The Gord Downie Fund for Brain Cancer Research, and CAMH.
+              All proceeds support The GoFundMe for Sara J.
             </p>
             <p style="color:#646464;font-size:11px;margin:8px 0 0;">TTH Podcast Series</p>
           </div>
