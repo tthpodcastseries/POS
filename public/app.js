@@ -1,6 +1,6 @@
 (() => {
-  let payments, card, applePay;
-  let applePaySupported = false;
+  let payments, card;
+
   let cart = [];
   let doorQty = 1;
   let appConfig = {};
@@ -238,20 +238,6 @@
       card = await payments.card();
       await card.attach('#card-container');
 
-      // Initialize Apple Pay
-      try {
-        const applePayRequest = payments.paymentRequest({
-          countryCode: 'CA',
-          currencyCode: 'CAD',
-          total: { label: 'TTH Podcast Series', amount: '0.00' },
-        });
-        applePay = await payments.applePay(applePayRequest);
-        applePaySupported = true;
-        console.log('Apple Pay initialized successfully');
-      } catch (apErr) {
-        console.log('Apple Pay not available:', apErr.message);
-        applePaySupported = false;
-      }
 
       refreshInventory();
 
@@ -332,7 +318,6 @@
     const totalAmountEl = document.getElementById('totalAmount');
     const chargeBtn = document.getElementById('chargeCardBtn');
     const cashBtn = document.getElementById('cashBtn');
-    const applePayBtn = document.getElementById('applePayBtn');
     const clearBtn = document.getElementById('clearCartBtn');
 
     if (cart.length === 0) {
@@ -341,7 +326,6 @@
       totalEl.style.display = 'none';
       chargeBtn.disabled = true;
       cashBtn.disabled = true;
-      applePayBtn.disabled = true;
       clearBtn.disabled = true;
       return;
     }
@@ -350,7 +334,6 @@
     totalEl.style.display = 'flex';
     chargeBtn.disabled = false;
     cashBtn.disabled = false;
-    applePayBtn.disabled = !applePaySupported;
     clearBtn.disabled = false;
 
     const total = getTotal();
@@ -459,21 +442,6 @@
       showAdminModal();
     });
 
-    // --- Apple Pay button ---
-    document.getElementById('applePayBtn').addEventListener('click', () => {
-      const total = getTotal();
-      if (total < 1 || !applePaySupported) return;
-      if (cartNeedsBuyerInfo()) {
-        pendingPaymentType = 'applepay';
-        showEmailModal();
-      } else {
-        buyerEmail = '';
-        buyerName = '';
-        buyerPhone = '';
-        buyerNewsletter = false;
-        handleApplePayPayment();
-      }
-    });
 
     document.getElementById('closeCash').addEventListener('click', () => {
       closeModal('cashModal');
@@ -669,8 +637,6 @@
       openCardModal();
     } else if (pendingPaymentType === 'cash') {
       openCashModal();
-    } else if (pendingPaymentType === 'applepay') {
-      handleApplePayPayment();
     }
     pendingPaymentType = null;
   }
@@ -919,58 +885,6 @@
     }
   }
 
-  // --- Apple Pay Payment ---
-  async function handleApplePayPayment() {
-    const total = getTotal();
-    if (total < 1 || !applePay) return;
-
-    const applePayBtn = document.getElementById('applePayBtn');
-    applePayBtn.disabled = true;
-    applePayBtn.classList.add('btn-loading');
-
-    try {
-      // Create a fresh payment request with the current total
-      const paymentRequest = payments.paymentRequest({
-        countryCode: 'CA',
-        currencyCode: 'CAD',
-        total: { label: 'TTH Podcast Series', amount: total.toFixed(2) },
-      });
-      const applePayInstance = await payments.applePay(paymentRequest);
-      const tokenResult = await applePayInstance.tokenize();
-
-      if (tokenResult.status !== 'OK') {
-        showToast('Apple Pay cancelled or failed');
-        return;
-      }
-
-      const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
-      const res = await authPost('/api/create-payment', {
-        sourceId: tokenResult.token,
-        amount: total,
-        description: getDescription(),
-        method: 'applepay',
-        email: buyerEmail || undefined,
-        buyerName: buyerName || undefined,
-        buyerPhone: buyerPhone || undefined,
-        newsletterOptIn: buyerNewsletter,
-        fiftyFiftyAmount: fiftyFiftyAmount || undefined,
-      });
-      const data = await res.json();
-
-      if (data.error) {
-        showToast('Apple Pay failed: ' + data.error);
-        return;
-      }
-
-      refreshInventory();
-      showSuccess(total, 'Apple Pay', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
-    } catch (err) {
-      showToast('Apple Pay error: ' + err.message);
-    } finally {
-      applePayBtn.disabled = !applePaySupported;
-      applePayBtn.classList.remove('btn-loading');
-    }
-  }
 
   // --- Cash Payment ---
   async function handleCashPayment() {
@@ -1171,7 +1085,7 @@
           <div class="report-card report-card-clickable" id="totalSalesCard"
                data-cash-count="${data.cash.count}" data-cash-total="${data.cash.total}"
                data-card-count="${data.card.count}" data-card-total="${data.card.total}"
-               data-applepay-count="${(data.applePay || {count:0}).count}" data-applepay-total="${(data.applePay || {total:'0.00'}).total}">
+>
             <div class="report-card-icon sales-icon">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
             </div>
@@ -1276,8 +1190,6 @@
           const cashTotal = totalSalesCard.dataset.cashTotal;
           const cardCount = totalSalesCard.dataset.cardCount;
           const cardTotal = totalSalesCard.dataset.cardTotal;
-          const apCount = totalSalesCard.dataset.applepayCount;
-          const apTotal = totalSalesCard.dataset.applepayTotal;
 
           document.getElementById('breakdownContent').innerHTML = `
             <div class="breakdown-row">
@@ -1295,14 +1207,6 @@
               <span class="breakdown-label">Card</span>
               <span class="breakdown-count">${cardCount} sale${cardCount !== '1' ? 's' : ''}</span>
               <span class="breakdown-amount">$${cardTotal}</span>
-            </div>
-            <div class="breakdown-row">
-              <div class="breakdown-icon applepay-icon">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 3C9 3 7 5 7 8s2 5 2 5"/><path d="M15 3c0 0-2 2-2 5s2 5 2 5"/><rect x="4" y="11" width="14" height="6" rx="2"/></svg>
-              </div>
-              <span class="breakdown-label">Apple Pay</span>
-              <span class="breakdown-count">${apCount} sale${apCount !== '1' ? 's' : ''}</span>
-              <span class="breakdown-amount">$${apTotal}</span>
             </div>
           `;
           openModal('salesBreakdownModal');

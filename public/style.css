@@ -666,23 +666,6 @@ main {
   border-color: transparent;
 }
 
-/* Apple Pay button */
-.btn-applepay {
-  background: #000;
-  color: #fff;
-  flex: 1;
-  border: 1px solid #333;
-}
-
-.btn-applepay:active {
-  background: #222;
-}
-
-.btn-applepay:disabled {
-  background: rgba(0,0,0,0.3);
-  color: var(--mid-grey);
-  border-color: transparent;
-}
 
 
 /* Expense modal */
@@ -1573,10 +1556,7 @@ main {
   color: #60a5fa;
 }
 
-.breakdown-icon.applepay-icon {
-  background: rgba(255,255,255,0.1);
-  color: #d9d9d9;
-}
+
 
 .breakdown-label {
   font-weight: 600;
@@ -1635,7 +1615,7 @@ main {
   .btn-secondary:hover:not(:disabled) { background: #c4c4c4; }
   .btn-cash:hover:not(:disabled) { background: #c4c4c4; }
   .btn-clear:hover:not(:disabled) { background: #c4c4c4; }
-  .btn-applepay:hover:not(:disabled) { background: #222; }
+
   .btn-draw:hover { background: #eab308; }
   .btn-danger:hover { background: #dc2626; }
   .icon-btn:hover { background: rgba(255,255,255,0.1); }
