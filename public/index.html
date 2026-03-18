@@ -22,6 +22,16 @@
     <div style="color:#D9D9D9;font-family:'Poppins',sans-serif;font-size:17px;font-weight:700;">TTH Podcast Series</div>
     <div style="color:#929292;font-family:'Poppins',sans-serif;font-size:13px;">Loading POS...</div>
   </div>
+  <!-- PIN Login Screen -->
+  <div id="pinScreen" style="position:fixed;inset:0;background:#140038;display:none;align-items:center;justify-content:center;z-index:9998;flex-direction:column;gap:20px;">
+    <div style="color:#D9D9D9;font-family:'Poppins',sans-serif;font-size:17px;font-weight:700;">TTH Podcast Series</div>
+    <div style="color:#929292;font-family:'Poppins',sans-serif;font-size:13px;">Enter Operator PIN</div>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="20" autocomplete="off"
+      style="width:180px;padding:12px 16px;font-size:24px;text-align:center;border-radius:10px;border:2px solid #333;background:#1a1a2e;color:#D9D9D9;font-family:'Poppins',sans-serif;letter-spacing:8px;">
+    <button id="pinSubmit" style="padding:10px 32px;border-radius:10px;border:none;background:#4CAF50;color:white;font-family:'Poppins',sans-serif;font-size:15px;font-weight:600;cursor:pointer;">Unlock</button>
+    <div id="pinError" style="color:#ff6b6b;font-family:'Poppins',sans-serif;font-size:12px;min-height:18px;"></div>
+  </div>
+
   <div id="app">
     <!-- Header -->
     <header>

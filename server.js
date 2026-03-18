@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const { SquareClient, SquareEnvironment } = require('square');
@@ -6,28 +7,83 @@ const { createClient } = require('@supabase/supabase-js');
 const { Resend } = require('resend');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.APP_ORIGIN || true,
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.static('public', { dotfiles: 'allow' }));
 
-// API key auth for write endpoints
+// --- Session-based auth (replaces exposed API key) ---
 const API_KEY = process.env.POS_API_KEY;
-function requireAuth(req, res, next) {
-  if (!API_KEY) {
-    console.warn('WARNING: POS_API_KEY not set - rejecting request for safety');
-    return res.status(500).json({ error: 'Server misconfigured - API key not set' });
+const OPERATOR_PIN = process.env.OPERATOR_PIN || API_KEY; // PIN to unlock POS
+const activeSessions = new Map(); // token -> { createdAt, ip }
+const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
+
+// Rate limiting for auth attempts
+const authAttempts = new Map(); // ip -> { count, firstAttempt }
+const MAX_AUTH_ATTEMPTS = 8;
+const AUTH_WINDOW = 15 * 60 * 1000; // 15 min
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const record = authAttempts.get(ip);
+  if (!record || (now - record.firstAttempt) > AUTH_WINDOW) {
+    authAttempts.set(ip, { count: 1, firstAttempt: now });
+    return true;
   }
-  if (req.headers['x-pos-key'] === API_KEY) return next();
+  record.count++;
+  return record.count <= MAX_AUTH_ATTEMPTS;
+}
+
+function requireAuth(req, res, next) {
+  // Support both session token and legacy API key
+  const token = req.headers['x-session-token'];
+  const legacyKey = req.headers['x-pos-key'];
+
+  if (token && activeSessions.has(token)) {
+    const session = activeSessions.get(token);
+    if (Date.now() - session.createdAt < SESSION_TTL) return next();
+    activeSessions.delete(token); // expired
+  }
+  if (legacyKey && legacyKey === API_KEY) return next();
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
-// Admin password auth (for draw screen, reports with PII, reset)
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '7132';
+// Admin password auth (for draw, reset, PII reports)
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  console.warn('WARNING: ADMIN_PASSWORD not set in env vars - admin endpoints will be locked');
+}
 function requireAdmin(req, res, next) {
+  if (!ADMIN_PASSWORD) return res.status(500).json({ error: 'Admin not configured' });
   const pw = req.headers['x-admin-pw'] || req.query.pw;
   if (pw === ADMIN_PASSWORD) return next();
   return res.status(401).json({ error: 'Admin password required' });
 }
+
+// Session login endpoint
+app.post('/api/session/login', (req, res) => {
+  const ip = req.ip;
+  if (!checkRateLimit(ip)) {
+    return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  }
+  const { pin } = req.body;
+  if (pin === OPERATOR_PIN) {
+    const token = crypto.randomBytes(32).toString('hex');
+    activeSessions.set(token, { createdAt: Date.now(), ip });
+    return res.json({ token });
+  }
+  return res.status(401).json({ error: 'Incorrect PIN' });
+});
+
+// Clean up expired sessions every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of activeSessions) {
+    if (now - session.createdAt > SESSION_TTL) activeSessions.delete(token);
+  }
+}, 60 * 60 * 1000);
 
 // Square client setup
 const squareClient = new SquareClient({
@@ -699,7 +755,7 @@ async function handle5050IfNeeded(description, email, amount, txId, buyerInfo = 
 }
 
 // --- API: Get available 50/50 ticket count ---
-app.get('/api/tickets-5050/available', async (req, res) => {
+app.get('/api/tickets-5050/available', requireAuth, async (req, res) => {
   try {
     const { count, error } = await supabase
       .from('tickets_5050')
@@ -714,7 +770,7 @@ app.get('/api/tickets-5050/available', async (req, res) => {
 });
 
 // --- API: Get 50/50 jackpot (50% of actual 50/50 revenue) ---
-app.get('/api/tickets-5050/jackpot', async (req, res) => {
+app.get('/api/tickets-5050/jackpot', requireAuth, async (req, res) => {
   try {
     const { count, error } = await supabase
       .from('tickets_5050')
@@ -732,7 +788,7 @@ app.get('/api/tickets-5050/jackpot', async (req, res) => {
 });
 
 // Get current inventory
-app.get('/api/inventory', async (req, res) => {
+app.get('/api/inventory', requireAuth, async (req, res) => {
   try {
     const inv = await loadInventory();
     res.json(inv);
@@ -748,7 +804,6 @@ app.get('/api/config', (req, res) => {
     applicationId: process.env.SQUARE_APPLICATION_ID,
     locationId: process.env.SQUARE_LOCATION_ID,
     environment: process.env.SQUARE_ENVIRONMENT || 'sandbox',
-    apiKey: process.env.POS_API_KEY || '',
   });
 });
 
@@ -1196,8 +1251,12 @@ setTimeout(() => recalcFiftyFiftyRevenue(), 2000);
 
 // Server-side admin password verification
 app.post('/api/admin/verify', (req, res) => {
+  const ip = req.ip;
+  if (!checkRateLimit(ip)) {
+    return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  }
   const { password } = req.body;
-  if (password === ADMIN_PASSWORD) {
+  if (ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
     res.json({ ok: true });
   } else {
     res.status(401).json({ error: 'Incorrect password' });
@@ -1219,7 +1278,7 @@ app.post('/api/draw-5050/current', requireAuth, async (req, res) => {
 });
 
 // Run the draw
-app.post('/api/draw-5050', requireAuth, async (req, res) => {
+app.post('/api/draw-5050', requireAuth, requireAdmin, async (req, res) => {
   try {
     // Get all sold tickets
     const { data: soldTickets, error } = await supabase
@@ -1264,7 +1323,7 @@ app.post('/api/draw-5050', requireAuth, async (req, res) => {
 });
 
 // Clear draw result (used by factory reset)
-app.post('/api/draw-5050/clear', requireAuth, async (req, res) => {
+app.post('/api/draw-5050/clear', requireAuth, requireAdmin, async (req, res) => {
   currentDrawResult = null;
   res.json({ ok: true });
 });
@@ -1324,7 +1383,7 @@ function csvEscape(value) {
 }
 
 // --- Factory Reset (for testing) ---
-app.post('/api/reset', requireAuth, async (req, res) => {
+app.post('/api/reset', requireAuth, requireAdmin, async (req, res) => {
   try {
     // 1. Delete all transactions
     const { error: txErr } = await supabase

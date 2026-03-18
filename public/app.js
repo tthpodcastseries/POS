@@ -108,9 +108,13 @@
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
 
+  // --- Session token management ---
+  let sessionToken = sessionStorage.getItem('pos-session') || '';
+
   // Authenticated POST helper
   function authPost(url, body) {
     const headers = { 'Content-Type': 'application/json' };
+    if (sessionToken) headers['X-Session-Token'] = sessionToken;
     if (appConfig.apiKey) headers['X-POS-Key'] = appConfig.apiKey;
     return fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   }
@@ -118,8 +122,67 @@
   // Authenticated GET helper (for protected read endpoints)
   function authGet(url) {
     const headers = {};
+    if (sessionToken) headers['X-Session-Token'] = sessionToken;
     if (appConfig.apiKey) headers['X-POS-Key'] = appConfig.apiKey;
     return fetch(url, { headers });
+  }
+
+  // --- PIN login ---
+  async function requireSession() {
+    // If we already have a valid session, skip
+    if (sessionToken) {
+      const test = await fetch('/api/inventory', { headers: { 'X-Session-Token': sessionToken } });
+      if (test.ok) return true;
+      // Session expired
+      sessionToken = '';
+      sessionStorage.removeItem('pos-session');
+    }
+
+    // Show PIN screen
+    return new Promise((resolve) => {
+      const splash = document.getElementById('loadingSplash');
+      if (splash) splash.style.display = 'none';
+      const pinScreen = document.getElementById('pinScreen');
+      const pinInput = document.getElementById('pinInput');
+      const pinSubmit = document.getElementById('pinSubmit');
+      const pinError = document.getElementById('pinError');
+      pinScreen.style.display = 'flex';
+      pinInput.value = '';
+      pinError.textContent = '';
+      pinInput.focus();
+
+      async function tryLogin() {
+        const pin = pinInput.value.trim();
+        if (!pin) return;
+        pinSubmit.disabled = true;
+        try {
+          const res = await fetch('/api/session/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            sessionToken = data.token;
+            sessionStorage.setItem('pos-session', sessionToken);
+            pinScreen.style.display = 'none';
+            resolve(true);
+          } else if (res.status === 429) {
+            pinError.textContent = 'Too many attempts. Wait 15 minutes.';
+          } else {
+            pinError.textContent = 'Incorrect PIN';
+            pinInput.value = '';
+            pinInput.focus();
+          }
+        } catch (e) {
+          pinError.textContent = 'Connection error';
+        }
+        pinSubmit.disabled = false;
+      }
+
+      pinSubmit.onclick = tryLogin;
+      pinInput.onkeydown = (e) => { if (e.key === 'Enter') tryLogin(); };
+    });
   }
 
   // --- Init ---
@@ -128,6 +191,9 @@
     updateOnlineStatus();
 
     try {
+      // Require PIN before anything loads
+      await requireSession();
+
       const res = await fetch('/api/config');
       appConfig = await res.json();
 
