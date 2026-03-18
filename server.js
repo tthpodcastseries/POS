@@ -22,8 +22,8 @@ const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
 // Rate limiting for auth attempts
 const authAttempts = new Map(); // ip -> { count, firstAttempt }
-const MAX_AUTH_ATTEMPTS = 8;
-const AUTH_WINDOW = 15 * 60 * 1000; // 15 min
+const MAX_AUTH_ATTEMPTS = 3;
+const AUTH_WINDOW = 15 * 60 * 1000; // 15 min lockout
 
 function checkRateLimit(ip) {
   const now = Date.now();

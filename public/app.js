@@ -151,6 +151,9 @@
       pinError.textContent = '';
       pinInput.focus();
 
+      let pinAttempts = 0;
+      const MAX_PIN_ATTEMPTS = 3;
+
       async function tryLogin() {
         const pin = pinInput.value.trim();
         if (!pin) return;
@@ -168,11 +171,23 @@
             pinScreen.style.display = 'none';
             resolve(true);
           } else if (res.status === 429) {
-            pinError.textContent = 'Too many attempts. Wait 15 minutes.';
+            pinInput.style.display = 'none';
+            pinSubmit.style.display = 'none';
+            pinError.textContent = 'Locked out. Wait 15 minutes.';
+            pinError.style.fontSize = '14px';
           } else {
-            pinError.textContent = 'Incorrect PIN';
-            pinInput.value = '';
-            pinInput.focus();
+            pinAttempts++;
+            const remaining = MAX_PIN_ATTEMPTS - pinAttempts;
+            if (remaining <= 0) {
+              pinInput.style.display = 'none';
+              pinSubmit.style.display = 'none';
+              pinError.textContent = 'Locked out. Wait 15 minutes.';
+              pinError.style.fontSize = '14px';
+            } else {
+              pinError.textContent = `Incorrect PIN. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`;
+              pinInput.value = '';
+              pinInput.focus();
+            }
           }
         } catch (e) {
           pinError.textContent = 'Connection error';
