@@ -976,6 +976,81 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
   }
 });
 
+// Log a sale (tracker mode - no payment processing)
+app.post('/api/log-sale', requireAuth, async (req, res) => {
+  try {
+    const { amount, description, email, buyerName, buyerPhone, newsletterOptIn, fiftyFiftyAmount } = req.body;
+    if (!amount || amount < 0.01) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+
+    // Check 50/50 ticket availability
+    const ticketCount = count5050Tickets(description);
+    if (ticketCount > 0) {
+      if (!email) {
+        return res.status(400).json({ error: 'Email required for 50/50 tickets' });
+      }
+      if (!buyerName || !buyerName.trim()) {
+        return res.status(400).json({ error: 'Name required for 50/50 tickets' });
+      }
+      const { count } = await supabase
+        .from('tickets_5050')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'available');
+      if ((count ?? 0) < ticketCount) {
+        return res.status(400).json({ error: `Only ${count ?? 0} 50/50 tickets remaining` });
+      }
+    }
+
+    // Check inventory before recording
+    const invCheck = await checkInventory(description);
+    if (!invCheck.ok) {
+      return res.status(400).json({ error: invCheck.error });
+    }
+
+    // Decrement inventory
+    await decrementInventory(description);
+
+    const txId = 'log_' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+    await saveTransaction({
+      tx_id: txId,
+      amount: parseFloat(amount).toFixed(2),
+      description: description || 'Logged Sale',
+      method: 'logged',
+      status: 'completed',
+      created: new Date().toISOString(),
+    });
+
+    // Track 50/50 revenue for jackpot calculation
+    if (fiftyFiftyAmount && fiftyFiftyAmount > 0) {
+      fiftyFiftyRevenue += parseFloat(fiftyFiftyAmount);
+    }
+
+    // Handle 50/50 ticket assignment + email
+    const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
+
+    // Handle event ticket generation + email
+    const eventResult = await handleEventTicketsIfNeeded(description, email, txId, { name: buyerName, email, phone: buyerPhone });
+
+    // Fire-and-forget sale notification to fundraising
+    sendSaleNotificationEmail(txId, amount, description, 'logged', buyerName, email, ticketResult.ticketNumbers).catch(err => {
+      console.error('Sale notification email failed:', err.message);
+    });
+
+    res.json({
+      status: 'succeeded',
+      ticketNumbers: ticketResult.ticketNumbers || null,
+      emailSent: ticketResult.emailSent || false,
+      eventTickets: eventResult.eventTickets || null,
+      eventEmailSent: eventResult.eventEmailSent || false,
+    });
+  } catch (err) {
+    console.error('Error logging sale:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Record an expense
 app.post('/api/expense', requireAuth, async (req, res) => {
   try {
@@ -1006,6 +1081,43 @@ app.post('/api/expense', requireAuth, async (req, res) => {
   }
 });
 
+// --- GoFundMe Tracker ---
+
+app.get('/api/gofundme', requireAuth, async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('tx_id', 'gofundme_total')
+      .single();
+    res.json({ total: data ? parseFloat(data.amount) : 0 });
+  } catch (err) {
+    res.json({ total: 0 });
+  }
+});
+
+app.post('/api/gofundme', requireAuth, async (req, res) => {
+  try {
+    const { total } = req.body;
+    if (total === undefined || total < 0) {
+      return res.status(400).json({ error: 'Invalid total' });
+    }
+    // Upsert via delete + insert (no unique constraint assumption)
+    await supabase.from('transactions').delete().eq('tx_id', 'gofundme_total');
+    await supabase.from('transactions').insert({
+      tx_id: 'gofundme_total',
+      amount: parseFloat(total).toFixed(2),
+      description: 'GoFundMe',
+      method: 'gofundme',
+      status: 'completed',
+      created: new Date().toISOString(),
+    });
+    res.json({ status: 'saved', total: parseFloat(total).toFixed(2) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Transactions & Reporting ---
 
 app.get('/api/transactions', requireAuth, async (req, res) => {
@@ -1020,7 +1132,10 @@ app.get('/api/transactions', requireAuth, async (req, res) => {
 
 app.get('/api/report', requireAuth, async (req, res) => {
   try {
-    const txns = await loadTransactions();
+    const allTxns = await loadTransactions();
+    // Separate GoFundMe row from regular transactions
+    const gfmRow = allTxns.find(t => t.tx_id === 'gofundme_total');
+    const txns = allTxns.filter(t => t.tx_id !== 'gofundme_total');
     const succeeded = txns.filter((t) => (t.status === 'succeeded' || t.status === 'completed') && t.method !== 'expense');
     const refunded = txns.filter((t) => t.status === 'refunded');
     const expenses = txns.filter((t) => t.method === 'expense' && t.status === 'completed');
@@ -1034,9 +1149,11 @@ app.get('/api/report', requireAuth, async (req, res) => {
     const cashTxns = succeeded.filter((t) => t.method === 'cash');
     const cardTxns = succeeded.filter((t) => t.method === 'card');
     const applePayTxns = succeeded.filter((t) => t.method === 'applepay');
+    const loggedTxns = succeeded.filter((t) => t.method === 'logged');
     const cashTotal = cashTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const cardTotal = cardTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const applePayTotal = applePayTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const loggedTotal = loggedTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
     // Count raffle, 50/50, and event ticket sales from descriptions
     let raffleSold = 0;
@@ -1103,18 +1220,25 @@ app.get('/api/report', requireAuth, async (req, res) => {
       expensesByCategory[cat] = (expensesByCategory[cat] || 0) + parseFloat(exp.amount);
     }
 
+    const gfmTotal = gfmRow ? parseFloat(gfmRow.amount) : 0;
+    const jackpotHalf = fiftyFiftyRevenueCalc / 2;
+    const grandTotal = netRevenue + gfmTotal + jackpotHalf;
+
     res.json({
       totalSales,
       totalRevenue: totalRevenue.toFixed(2),
       netRevenue: netRevenue.toFixed(2),
+      grandTotal: grandTotal.toFixed(2),
       refunds: { count: refunded.length, total: refundedTotal.toFixed(2) },
       expenses: { count: expenses.length, total: expenseTotal.toFixed(2), byCategory: expensesByCategory },
       cash: { count: cashTxns.length, total: cashTotal.toFixed(2) },
       card: { count: cardTxns.length, total: cardTotal.toFixed(2) },
       applePay: { count: applePayTxns.length, total: applePayTotal.toFixed(2) },
+      logged: { count: loggedTxns.length, total: loggedTotal.toFixed(2) },
       raffle: { sold: raffleSold, total: raffleRevenue.toFixed(2) },
       eventTickets: { sold: eventTicketsSold, total: eventTicketsRevenue.toFixed(2) },
       tickets5050: { sold: ticketsSold || 0, available: ticketsAvailable || 0, total: fiftyFiftyRevenueCalc.toFixed(2) },
+      gofundme: { total: gfmTotal.toFixed(2) },
       newsletterSubscribers: newsletterCount || 0,
       transactions: allDisplayable,
     });
@@ -1153,7 +1277,7 @@ app.post('/api/refund', requireAuth, async (req, res) => {
     }
 
     // For card payments, process refund through Square
-    if (!paymentId.startsWith('cash_')) {
+    if (!paymentId.startsWith('cash_') && !paymentId.startsWith('log_')) {
       const idempotencyKey = `refund-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       const refundRequest = {
@@ -1385,12 +1509,25 @@ function csvEscape(value) {
 // --- Factory Reset (for testing) ---
 app.post('/api/reset', requireAuth, requireAdmin, async (req, res) => {
   try {
+    // 0. Preserve GoFundMe total across reset
+    const { data: gfmBackup } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('tx_id', 'gofundme_total')
+      .single();
+
     // 1. Delete all transactions
     const { error: txErr } = await supabase
       .from('transactions')
       .delete()
       .neq('id', 0); // delete all rows
     if (txErr) console.error('Reset transactions error:', txErr.message);
+
+    // 1b. Restore GoFundMe row if it existed
+    if (gfmBackup) {
+      delete gfmBackup.id; // let Supabase assign new id
+      await supabase.from('transactions').insert(gfmBackup);
+    }
 
     // 2. Reset all 50/50 tickets back to available
     const { error: ticketErr } = await supabase

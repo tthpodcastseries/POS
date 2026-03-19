@@ -1029,6 +1029,116 @@ main {
   color: #ef4444;
 }
 
+/* GoFundMe card */
+.gfm-icon {
+  background: rgba(234,179,8,0.2);
+  color: #facc15;
+}
+
+/* GoFundMe main screen card */
+.gfm-section {
+  padding-bottom: 4px;
+}
+.gfm-main-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, rgba(250,204,21,0.08), rgba(250,204,21,0.03));
+  border: 1px solid rgba(250,204,21,0.2);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.gfm-main-amount {
+  font-size: 28px;
+  font-weight: 700;
+  color: #facc15;
+  font-variant-numeric: tabular-nums;
+}
+.btn-sm {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(250,204,21,0.15);
+  color: #facc15;
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+}
+.btn-sm:active {
+  background: rgba(250,204,21,0.25);
+}
+
+/* GoFundMe numpad modal */
+.gfm-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+.gfm-numpad-btn {
+  padding: 16px;
+  font-size: 20px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  background: rgba(217,217,217,0.1);
+  color: var(--light-grey);
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+.gfm-numpad-btn:active {
+  background: rgba(217,217,217,0.2);
+}
+.gfm-numpad-del {
+  color: var(--danger);
+}
+
+/* GoFundMe editor */
+.gfm-editor {
+  margin-top: 20px;
+  padding: 16px;
+  background: rgba(217,217,217,0.06);
+  border: 1px solid rgba(217,217,217,0.1);
+  border-radius: 12px;
+}
+.gfm-editor h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: #D9D9D9;
+}
+.gfm-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gfm-dollar {
+  font-size: 20px;
+  font-weight: 700;
+  color: #D9D9D9;
+}
+.gfm-edit-row input {
+  flex: 1;
+  min-width: 0;
+}
+.gfm-save-btn {
+  flex-shrink: 0;
+  padding: 12px 20px;
+}
+
+/* Logged method badge */
+.logged-icon {
+  background: rgba(168,85,247,0.2);
+  color: #a855f7;
+}
+.txn-method.logged {
+  background: rgba(168,85,247,0.15);
+  color: #a855f7;
+}
+
 /* Inventory edit screen */
 .inv-edit-content {
   padding: 20px;

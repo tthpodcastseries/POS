@@ -4,13 +4,14 @@
   let cart = [];
   let doorQty = 1;
   let appConfig = {};
-  let pendingPaymentType = null; // 'card' or 'cash'
+  let pendingPaymentType = null; // 'logSale', 'addProduct', etc.
   let buyerEmail = '';
   let buyerName = '';
   let buyerPhone = '';
   let buyerNewsletter = false;
   let cartIdCounter = 0;
   let expenseValue = '';
+  let gfmValue = '';
   let pendingProduct = null; // for admin-locked product buttons
 
   // --- Modal focus trapping ---
@@ -212,47 +213,19 @@
       const res = await fetch('/api/config');
       appConfig = await res.json();
 
-      const sdkUrl = appConfig.environment === 'production'
-        ? 'https://web.squarecdn.com/v1/square.js'
-        : 'https://sandbox.web.squarecdn.com/v1/square.js';
-
-      // Try loading Square SDK up to 3 times
-      let sdkLoaded = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await loadScript(sdkUrl);
-          if (window.Square) { sdkLoaded = true; break; }
-        } catch (e) {
-          console.warn(`Square SDK load attempt ${attempt} failed`);
-          if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
-        }
-      }
-
-      if (!sdkLoaded || !window.Square) {
-        console.error('Square SDK failed to load after 3 attempts');
-        return;
-      }
-
-      payments = window.Square.payments(appConfig.applicationId, appConfig.locationId);
-
-      card = await payments.card();
-      await card.attach('#card-container');
-
+      // Square SDK kept dormant - tracker mode
+      // SDK can be loaded manually if card payments are needed later
 
       refreshInventory();
+      refreshGoFundMe();
 
       // Hide loading splash
       const splash = document.getElementById('loadingSplash');
       if (splash) splash.remove();
     } catch (err) {
-      console.error('Square init error:', err);
-      // Still hide splash on error so the UI is usable for cash
+      console.error('Init error:', err);
       const splash = document.getElementById('loadingSplash');
       if (splash) splash.remove();
-      const container = document.getElementById('card-container');
-      if (container) {
-        container.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;cursor:pointer;" onclick="location.reload()">Card form failed to load. <u>Tap to retry.</u></p>';
-      }
     }
   }
 
@@ -316,24 +289,21 @@
     const emptyEl = document.getElementById('cartEmpty');
     const totalEl = document.getElementById('cartTotal');
     const totalAmountEl = document.getElementById('totalAmount');
-    const chargeBtn = document.getElementById('chargeCardBtn');
-    const cashBtn = document.getElementById('cashBtn');
+    const logSaleBtn = document.getElementById('logSaleBtn');
     const clearBtn = document.getElementById('clearCartBtn');
 
     if (cart.length === 0) {
       emptyEl.style.display = 'block';
       itemsEl.innerHTML = '';
       totalEl.style.display = 'none';
-      chargeBtn.disabled = true;
-      cashBtn.disabled = true;
+      logSaleBtn.disabled = true;
       clearBtn.disabled = true;
       return;
     }
 
     emptyEl.style.display = 'none';
     totalEl.style.display = 'flex';
-    chargeBtn.disabled = false;
-    cashBtn.disabled = false;
+    logSaleBtn.disabled = false;
     clearBtn.disabled = false;
 
     const total = getTotal();
@@ -363,20 +333,13 @@
 
   // --- Events ---
   function bindEvents() {
-    // Product buttons (raffle, 50/50, event tickets)
-    const adminLockedProducts = ['Raffle Tickets', 'GA Ticket'];
+    // Product buttons (raffle, 50/50, event tickets) - all unlocked in tracker mode
     document.querySelectorAll('.product-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const product = btn.dataset.product;
         const qty = parseInt(btn.dataset.qty);
         const price = parseInt(btn.dataset.price);
-        if (adminLockedProducts.includes(product)) {
-          pendingProduct = { product, qty, price };
-          pendingPaymentType = 'addProduct';
-          showAdminModal();
-        } else {
-          addToCart(product, qty, price);
-        }
+        addToCart(product, qty, price);
       });
     });
 
@@ -401,9 +364,9 @@
     });
 
     document.getElementById('addDoorTicket').addEventListener('click', () => {
-      pendingProduct = { product: 'Door Tickets', qty: doorQty, price: doorQty * 30 };
-      pendingPaymentType = 'addProduct';
-      showAdminModal();
+      addToCart('Door Tickets', doorQty, doorQty * 30);
+      doorQty = 1;
+      document.getElementById('doorQty').textContent = 1;
     });
 
     // Clear cart with confirmation
@@ -413,41 +376,21 @@
       if (ok) clearCart();
     });
 
-    // --- Card button ---
-    document.getElementById('chargeCardBtn').addEventListener('click', () => {
+    // --- Log Sale button ---
+    document.getElementById('logSaleBtn').addEventListener('click', () => {
       const total = getTotal();
-      if (total < 1) return;
+      if (total < 0.01) return;
       if (cartNeedsBuyerInfo()) {
-        pendingPaymentType = 'card';
+        pendingPaymentType = 'logSale';
         showEmailModal();
       } else {
         buyerEmail = '';
         buyerName = '';
         buyerPhone = '';
         buyerNewsletter = false;
-        openCardModal();
+        handleLogSale();
       }
     });
-
-    document.getElementById('closePayment').addEventListener('click', () => {
-      closeModal('paymentModal');
-    });
-
-    document.getElementById('payBtn').addEventListener('click', handleCardPayment);
-
-    // --- Cash button (admin password required) ---
-    document.getElementById('cashBtn').addEventListener('click', () => {
-      const total = getTotal();
-      if (total < 0.01) return;
-      showAdminModal();
-    });
-
-
-    document.getElementById('closeCash').addEventListener('click', () => {
-      closeModal('cashModal');
-    });
-
-    document.getElementById('confirmCashBtn').addEventListener('click', handleCashPayment);
 
     // --- Email modal ---
     document.getElementById('closeEmail').addEventListener('click', () => {
@@ -516,6 +459,54 @@
         haptic();
         submitExpense(btn.dataset.category);
       });
+    });
+
+    // --- GoFundMe modal ---
+    document.getElementById('editGfmBtn').addEventListener('click', () => {
+      gfmValue = '';
+      document.getElementById('gfmDisplay').textContent = '$0.00';
+      document.getElementById('gfm-errors').textContent = '';
+      openModal('gfmModal');
+    });
+    document.getElementById('closeGfm').addEventListener('click', () => {
+      closeModal('gfmModal');
+      gfmValue = '';
+    });
+    document.querySelectorAll('.gfm-numpad-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        haptic();
+        const val = btn.dataset.val;
+        if (val === 'del') {
+          gfmValue = gfmValue.slice(0, -1);
+        } else if (val === '.') {
+          if (!gfmValue.includes('.')) gfmValue += '.';
+        } else {
+          const dotIdx = gfmValue.indexOf('.');
+          if (dotIdx >= 0 && gfmValue.length - dotIdx > 2) return;
+          if (gfmValue.replace('.', '').length >= 7) return;
+          gfmValue += val;
+        }
+        const num = parseFloat(gfmValue) || 0;
+        document.getElementById('gfmDisplay').textContent = '$' + num.toFixed(2);
+      });
+    });
+    document.getElementById('saveGfmBtn').addEventListener('click', async () => {
+      const val = parseFloat(gfmValue);
+      if (isNaN(val) || val < 0) {
+        document.getElementById('gfm-errors').textContent = 'Enter a valid amount';
+        return;
+      }
+      try {
+        const res = await authPost('/api/gofundme', { total: val });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        showToast('GoFundMe total updated', 'success');
+        closeModal('gfmModal');
+        gfmValue = '';
+        refreshGoFundMe();
+      } catch (err) {
+        document.getElementById('gfm-errors').textContent = 'Error: ' + err.message;
+      }
     });
 
     // --- New sale ---
@@ -633,27 +624,13 @@
     buyerNewsletter = newsletter;
     closeModal('emailModal');
 
-    if (pendingPaymentType === 'card') {
-      openCardModal();
-    } else if (pendingPaymentType === 'cash') {
-      openCashModal();
+    if (pendingPaymentType === 'logSale') {
+      handleLogSale();
     }
     pendingPaymentType = null;
   }
 
-  function openCardModal() {
-    const total = getTotal();
-    document.getElementById('modalAmount').textContent = total.toFixed(2);
-    openModal('paymentModal');
-  }
-
-  function openCashModal() {
-    const total = getTotal();
-    document.getElementById('cashAmount').textContent = total.toFixed(2);
-    openModal('cashModal');
-  }
-
-  // --- Admin Password for Cash ---
+  // --- Admin Password ---
   function showAdminModal() {
     document.getElementById('adminPasswordInput').value = '';
     document.getElementById('admin-errors').textContent = '';
@@ -705,18 +682,6 @@
         runDraw();
       } else if (flow === 'factoryReset') {
         doFactoryReset();
-      } else {
-        // Cash flow
-        if (cartNeedsBuyerInfo()) {
-          pendingPaymentType = 'cash';
-          showEmailModal();
-        } else {
-          buyerEmail = '';
-          buyerName = '';
-          buyerPhone = '';
-          buyerNewsletter = false;
-          openCashModal();
-        }
       }
     } catch (err) {
       document.getElementById('admin-errors').textContent = 'Could not verify password';
@@ -815,88 +780,17 @@
     }
   }
 
-  // --- Card Payment ---
-  async function handleCardPayment() {
+  // --- Log Sale (tracker mode) ---
+  async function handleLogSale() {
     const total = getTotal();
-    if (total < 1) return;
-    const payBtn = document.getElementById('payBtn');
-    payBtn.disabled = true;
-    payBtn.textContent = 'Processing...';
-    payBtn.classList.add('btn-loading');
-    document.getElementById('card-errors').textContent = '';
-
-    if (!card) {
-      document.getElementById('card-errors').textContent = 'Card form not ready. Please wait a moment and try again.';
-      try {
-        if (payments) {
-          card = await payments.card();
-          await card.attach('#card-container');
-          document.getElementById('card-errors').textContent = 'Card form loaded - please try again.';
-        } else {
-          document.getElementById('card-errors').textContent = 'Square failed to load. Check your connection and refresh.';
-        }
-      } catch (initErr) {
-        document.getElementById('card-errors').textContent = 'Could not load card form: ' + initErr.message;
-      }
-      payBtn.disabled = false;
-      payBtn.textContent = 'Pay Now';
-      return;
-    }
-
-    try {
-      const tokenResult = await card.tokenize();
-
-      if (tokenResult.status !== 'OK') {
-        const errorMsg = tokenResult.errors
-          ? tokenResult.errors.map(e => e.message).join(', ')
-          : 'Card tokenization failed';
-        document.getElementById('card-errors').textContent = errorMsg;
-        return;
-      }
-
-      const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
-      const res = await authPost('/api/create-payment', {
-        sourceId: tokenResult.token,
-        amount: total,
-        description: getDescription(),
-        method: 'card',
-        email: buyerEmail || undefined,
-        buyerName: buyerName || undefined,
-        buyerPhone: buyerPhone || undefined,
-        newsletterOptIn: buyerNewsletter,
-        fiftyFiftyAmount: fiftyFiftyAmount || undefined,
-      });
-      const data = await res.json();
-
-      if (data.error) {
-        document.getElementById('card-errors').textContent = data.error;
-        return;
-      }
-
-      closeModal('paymentModal');
-      refreshInventory();
-      showSuccess(total, 'Card', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
-    } catch (err) {
-      document.getElementById('card-errors').textContent = err.message;
-    } finally {
-      payBtn.disabled = false;
-      payBtn.textContent = 'Pay Now';
-      payBtn.classList.remove('btn-loading');
-    }
-  }
-
-
-  // --- Cash Payment ---
-  async function handleCashPayment() {
-    const total = getTotal();
-    const btn = document.getElementById('confirmCashBtn');
+    if (total < 0.01) return;
+    const btn = document.getElementById('logSaleBtn');
     btn.disabled = true;
-    btn.textContent = 'Recording...';
-    btn.classList.add('btn-loading');
+    btn.textContent = 'Logging...';
 
     try {
       const fiftyFiftyAmount = cart.filter(i => i.product === '50/50 Tickets').reduce((s, i) => s + i.price, 0);
-      const res = await authPost('/api/cash-payment', {
+      const res = await authPost('/api/log-sale', {
         amount: total,
         description: getDescription(),
         email: buyerEmail || undefined,
@@ -908,23 +802,21 @@
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      closeModal('cashModal');
       refreshInventory();
-      showSuccess(total, 'Cash', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
+      showSuccess(total, 'Logged', data.ticketNumbers, data.emailSent, data.eventTickets, data.eventEmailSent);
     } catch (err) {
-      closeModal('cashModal');
-      showToast('Cash error: ' + err.message);
+      showToast('Error: ' + err.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Confirm Cash Received';
-      btn.classList.remove('btn-loading');
+      btn.textContent = 'Log Sale';
     }
   }
 
   // --- Success ---
   function showSuccess(amount, method, ticketNumbers, emailSent, eventTickets, eventEmailSent) {
     document.getElementById('successAmount').textContent = '$' + amount.toFixed(2);
-    document.getElementById('successMethod').textContent = method ? 'Paid via ' + method : '';
+    document.getElementById('successTitle').textContent = method === 'Logged' ? 'Sale Logged' : 'Payment Successful';
+    document.getElementById('successMethod').textContent = method === 'Logged' ? 'Sale logged' : (method ? 'Paid via ' + method : '');
 
     const ticketsDiv = document.getElementById('successTickets');
     const ticketListDiv = document.getElementById('ticketNumberList');
@@ -1067,16 +959,18 @@
       const hasExpenses = expenses.count > 0;
       const hasDeductions = hasRefunds || hasExpenses;
 
+      const gofundme = data.gofundme || { total: '0.00' };
+      const logged = data.logged || { count: 0, total: '0.00' };
+
       document.getElementById('reportContent').innerHTML = `
         <div class="report-hero">
-          <div class="report-total-label">Total Revenue</div>
-          <div class="report-total-amount">$${data.totalRevenue}</div>
-          <div class="report-total-count">${data.totalSales} sale${data.totalSales !== 1 ? 's' : ''}</div>
+          <div class="report-total-label">Total Raised</div>
+          <div class="report-total-amount">$${data.grandTotal}</div>
+          <div class="report-total-count">Sales: $${data.netRevenue} + GoFundMe: $${gofundme.total} + 50/50 Jackpot: $${(parseFloat(tickets5050.total || 0) / 2).toFixed(2)}</div>
           ${hasDeductions ? `
             <div class="report-refund-summary">
               ${hasRefunds ? `<span class="refund-line">- $${refunds.total} refunded (${refunds.count})</span>` : ''}
               ${hasExpenses ? `<span class="refund-line">- $${expenses.total} expenses (${expenses.count})</span>` : ''}
-              <span class="net-line">Net: $${data.netRevenue}</span>
             </div>
           ` : ''}
         </div>
@@ -1085,6 +979,7 @@
           <div class="report-card report-card-clickable" id="totalSalesCard"
                data-cash-count="${data.cash.count}" data-cash-total="${data.cash.total}"
                data-card-count="${data.card.count}" data-card-total="${data.card.total}"
+               data-logged-count="${logged.count}" data-logged-total="${logged.total}"
 >
             <div class="report-card-icon sales-icon">
               <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -1125,6 +1020,16 @@
             </div>
             <span class="report-card-amount">$${tickets5050.total || '0.00'}</span>
           </div>
+          <div class="report-card">
+            <div class="report-card-icon gfm-icon">
+              <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>
+            </div>
+            <div class="report-card-info">
+              <span class="report-card-label">GoFundMe</span>
+              <span class="report-card-count">External campaign</span>
+            </div>
+            <span class="report-card-amount">$${gofundme.total}</span>
+          </div>
           ${hasExpenses ? `
           <div class="report-card">
             <div class="report-card-icon expense-icon">
@@ -1137,6 +1042,15 @@
             <span class="report-card-amount expense-amount">-$${expenses.total}</span>
           </div>
           ` : ''}
+        </div>
+
+        <div class="gfm-editor">
+          <h3>Update GoFundMe Total</h3>
+          <div class="gfm-edit-row">
+            <span class="gfm-dollar">$</span>
+            <input type="number" id="gfmInput" class="form-input" step="0.01" min="0" value="${gofundme.total}" inputmode="decimal">
+            <button onclick="window._saveGfm()" class="btn btn-primary gfm-save-btn">Save</button>
+          </div>
         </div>
 
         <div class="export-row">
@@ -1190,8 +1104,18 @@
           const cashTotal = totalSalesCard.dataset.cashTotal;
           const cardCount = totalSalesCard.dataset.cardCount;
           const cardTotal = totalSalesCard.dataset.cardTotal;
+          const loggedCount = totalSalesCard.dataset.loggedCount;
+          const loggedTotal = totalSalesCard.dataset.loggedTotal;
 
           document.getElementById('breakdownContent').innerHTML = `
+            <div class="breakdown-row">
+              <div class="breakdown-icon logged-icon">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <span class="breakdown-label">Logged</span>
+              <span class="breakdown-count">${loggedCount} sale${loggedCount !== '1' ? 's' : ''}</span>
+              <span class="breakdown-amount">$${loggedTotal}</span>
+            </div>
             <div class="breakdown-row">
               <div class="breakdown-icon cash-icon">
                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
@@ -1307,8 +1231,19 @@
     } catch (e) { /* ignore */ }
   }
 
+  // --- GoFundMe main screen refresh ---
+  async function refreshGoFundMe() {
+    try {
+      const res = await authGet('/api/gofundme');
+      const data = await res.json();
+      const el = document.getElementById('gfmMainAmount');
+      if (el) el.textContent = '$' + parseFloat(data.total || 0).toFixed(2);
+    } catch (e) { /* silent */ }
+  }
+
   // Refresh jackpot on load (ongoing refresh handled by consolidated poll above)
   refreshJackpot();
+  refreshGoFundMe();
 
   // --- 50/50 Draw ---
   let drawInProgress = false;
@@ -1423,6 +1358,23 @@
       status.textContent = 'Error: ' + err.message;
     }
   }
+
+  // --- GoFundMe save ---
+  window._saveGfm = async function() {
+    const input = document.getElementById('gfmInput');
+    const val = parseFloat(input.value);
+    if (isNaN(val) || val < 0) { showToast('Enter a valid amount'); return; }
+    try {
+      const res = await authPost('/api/gofundme', { total: val });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      showToast('GoFundMe total updated', 'success');
+      refreshGoFundMe();
+      loadReport();
+    } catch (err) {
+      showToast('Error: ' + err.message);
+    }
+  };
 
   // --- Newsletter CSV download (authenticated) ---
   window._downloadExport = async function() {

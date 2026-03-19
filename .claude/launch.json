@@ -6,6 +6,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["start"],
       "port": 3000
+    },
+    {
+      "name": "static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "public", "-l", "3001", "--no-clipboard"],
+      "port": 3001
+    },
+    {
+      "name": "disco",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "/Users/jd/Documents/POS/disco-audit", "-l", "8080", "--no-clipboard"],
+      "port": 8080
     }
   ]
 }
