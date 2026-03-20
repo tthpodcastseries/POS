@@ -21,15 +21,17 @@ const activeSessions = new Map(); // token -> { createdAt, ip }
 const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
 // Rate limiting for auth attempts
-const authAttempts = new Map(); // ip -> { count, firstAttempt }
+const pinAttempts = new Map(); // ip -> { count, firstAttempt }
+const adminAttempts = new Map(); // ip -> { count, firstAttempt }
 const MAX_AUTH_ATTEMPTS = 3;
 const AUTH_WINDOW = 15 * 60 * 1000; // 15 min lockout
 
-function checkRateLimit(ip) {
+function checkRateLimit(ip, type = 'pin') {
+  const store = type === 'admin' ? adminAttempts : pinAttempts;
   const now = Date.now();
-  const record = authAttempts.get(ip);
+  const record = store.get(ip);
   if (!record || (now - record.firstAttempt) > AUTH_WINDOW) {
-    authAttempts.set(ip, { count: 1, firstAttempt: now });
+    store.set(ip, { count: 1, firstAttempt: now });
     return true;
   }
   record.count++;
@@ -1377,7 +1379,7 @@ setTimeout(() => recalcFiftyFiftyRevenue(), 2000);
 // Server-side admin password verification
 app.post('/api/admin/verify', (req, res) => {
   const ip = req.ip;
-  if (!checkRateLimit(ip)) {
+  if (!checkRateLimit(ip, 'admin')) {
     return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
   }
   const { password } = req.body;
