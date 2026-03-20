@@ -1378,10 +1378,6 @@ setTimeout(() => recalcFiftyFiftyRevenue(), 2000);
 
 // Server-side admin password verification
 app.post('/api/admin/verify', (req, res) => {
-  const ip = req.ip;
-  if (!checkRateLimit(ip, 'admin')) {
-    return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
-  }
   const { password } = req.body;
   if (ADMIN_PASSWORD && password === ADMIN_PASSWORD) {
     res.json({ ok: true });
