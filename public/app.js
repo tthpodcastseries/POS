@@ -8,6 +8,7 @@
   let buyerEmail = '';
   let buyerName = '';
   let buyerPhone = '';
+  let buyerBirthday = '';
   let buyerNewsletter = false;
   let cartIdCounter = 0;
   let expenseValue = '';
@@ -245,14 +246,9 @@
     });
   }
 
-  // --- Check if cart needs buyer info (any tickets) ---
+  // --- Check if cart needs buyer info (only 50/50 tickets) ---
   function cartNeedsBuyerInfo() {
-    return cart.some(item =>
-      item.product === '50/50 Tickets' ||
-      item.product === 'Door Tickets' ||
-      item.product === 'Early Bird Ticket' ||
-      item.product === 'GA Ticket'
-    );
+    return cart.some(item => item.product === '50/50 Tickets');
   }
 
   // --- Cart ---
@@ -387,6 +383,7 @@
         buyerEmail = '';
         buyerName = '';
         buyerPhone = '';
+        buyerBirthday = '';
         buyerNewsletter = false;
         handleLogSale();
       }
@@ -401,7 +398,7 @@
     document.getElementById('confirmEmailBtn').addEventListener('click', handleEmailConfirm);
 
     // Clear errors on typing, submit on Enter from any field
-    ['buyerFirstName', 'buyerLastName', 'buyerEmail', 'buyerPhone'].forEach(id => {
+    ['buyerFirstName', 'buyerLastName', 'buyerEmail', 'buyerPhone', 'buyerBirthday'].forEach(id => {
       document.getElementById(id).addEventListener('input', () => {
         document.getElementById('email-errors').textContent = '';
       });
@@ -593,6 +590,7 @@
     document.getElementById('buyerLastName').value = '';
     document.getElementById('buyerEmail').value = '';
     document.getElementById('buyerPhone').value = '';
+    if (document.getElementById('buyerBirthday')) document.getElementById('buyerBirthday').value = '';
     document.getElementById('buyerNewsletter').checked = false;
     document.getElementById('email-errors').textContent = '';
     openModal('emailModal');
@@ -604,6 +602,7 @@
     const lastName = document.getElementById('buyerLastName').value.trim();
     const email = document.getElementById('buyerEmail').value.trim();
     const phone = document.getElementById('buyerPhone').value.trim();
+    const birthday = document.getElementById('buyerBirthday') ? document.getElementById('buyerBirthday').value.trim() : '';
     const newsletter = document.getElementById('buyerNewsletter').checked;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -611,7 +610,6 @@
     if (!firstName) errors.push('First name is required');
     if (!lastName) errors.push('Last name is required');
     if (!email || !emailRegex.test(email)) errors.push('Valid email is required');
-    if (!phone) errors.push('Phone number is required');
 
     if (errors.length > 0) {
       document.getElementById('email-errors').textContent = errors.join('. ');
@@ -621,6 +619,7 @@
     buyerName = firstName + ' ' + lastName;
     buyerEmail = email;
     buyerPhone = phone;
+    buyerBirthday = birthday;
     buyerNewsletter = newsletter;
     closeModal('emailModal');
 
@@ -796,6 +795,7 @@
         email: buyerEmail || undefined,
         buyerName: buyerName || undefined,
         buyerPhone: buyerPhone || undefined,
+        buyerBirthday: buyerBirthday || undefined,
         newsletterOptIn: buyerNewsletter,
         fiftyFiftyAmount: fiftyFiftyAmount || undefined,
       });

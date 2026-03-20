@@ -304,6 +304,7 @@ async function assignTickets(qty, email, txId, buyerInfo = {}) {
           buyer_email: email,
           buyer_name: buyerInfo.name || null,
           buyer_phone: buyerInfo.phone || null,
+          buyer_birthday: buyerInfo.birthday || null,
           newsletter_opt_in: buyerInfo.newsletterOptIn || false,
           sold_at: new Date().toISOString(),
           transaction_id: txId,
@@ -324,7 +325,7 @@ async function assignTickets(qty, email, txId, buyerInfo = {}) {
     if (assigned.length > 0) {
       await supabase
         .from('tickets_5050')
-        .update({ status: 'available', buyer_email: null, buyer_name: null, buyer_phone: null, newsletter_opt_in: false, sold_at: null, transaction_id: null })
+        .update({ status: 'available', buyer_email: null, buyer_name: null, buyer_phone: null, buyer_birthday: null, newsletter_opt_in: false, sold_at: null, transaction_id: null })
         .eq('transaction_id', txId);
     }
     return { ok: false, error: `Only ${assigned.length} 50/50 tickets available, needed ${qty}` };
@@ -979,7 +980,7 @@ app.post('/api/cash-payment', requireAuth, async (req, res) => {
 // Log a sale (tracker mode - no payment processing)
 app.post('/api/log-sale', requireAuth, async (req, res) => {
   try {
-    const { amount, description, email, buyerName, buyerPhone, newsletterOptIn, fiftyFiftyAmount } = req.body;
+    const { amount, description, email, buyerName, buyerPhone, buyerBirthday, newsletterOptIn, fiftyFiftyAmount } = req.body;
     if (!amount || amount < 0.01) {
       return res.status(400).json({ error: 'Invalid amount' });
     }
@@ -1028,7 +1029,7 @@ app.post('/api/log-sale', requireAuth, async (req, res) => {
     }
 
     // Handle 50/50 ticket assignment + email
-    const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, newsletterOptIn });
+    const ticketResult = await handle5050IfNeeded(description, email, amount, txId, { name: buyerName, phone: buyerPhone, birthday: buyerBirthday, newsletterOptIn });
 
     // Handle event ticket generation + email
     const eventResult = await handleEventTicketsIfNeeded(description, email, txId, { name: buyerName, email, phone: buyerPhone });
@@ -1311,7 +1312,7 @@ app.post('/api/refund', requireAuth, async (req, res) => {
     // Release 50/50 tickets back to available and adjust revenue
     const { data: releasedTickets, error: ticketError } = await supabase
       .from('tickets_5050')
-      .update({ status: 'available', buyer_email: null, buyer_name: null, buyer_phone: null, newsletter_opt_in: false, sold_at: null, transaction_id: null })
+      .update({ status: 'available', buyer_email: null, buyer_name: null, buyer_phone: null, buyer_birthday: null, newsletter_opt_in: false, sold_at: null, transaction_id: null })
       .eq('transaction_id', paymentId)
       .select('id');
     if (ticketError) console.error('Error releasing 50/50 tickets:', ticketError.message);
@@ -1458,7 +1459,7 @@ app.get('/api/newsletter-export', requireAuth, async (req, res) => {
     // Get all sold tickets where newsletter_opt_in is true, deduplicate by email
     const { data: subscribers, error } = await supabase
       .from('tickets_5050')
-      .select('buyer_name, buyer_email, buyer_phone')
+      .select('buyer_name, buyer_email, buyer_phone, buyer_birthday')
       .eq('status', 'sold')
       .eq('newsletter_opt_in', true);
 
@@ -1475,8 +1476,8 @@ app.get('/api/newsletter-export', requireAuth, async (req, res) => {
       }
     }
 
-    // Build CSV - Mailchimp standard columns
-    const rows = [['First Name', 'Last Name', 'Email Address', 'Phone Number']];
+    // Build CSV - Mailchimp standard columns + birthday
+    const rows = [['First Name', 'Last Name', 'Email Address', 'Phone Number', 'Birthday']];
     for (const sub of unique) {
       const fullName = (sub.buyer_name || '').trim();
       const parts = fullName.split(/\s+/);
@@ -1484,7 +1485,8 @@ app.get('/api/newsletter-export', requireAuth, async (req, res) => {
       const lastName = parts.slice(1).join(' ') || '';
       const email = sub.buyer_email || '';
       const phone = sub.buyer_phone || '';
-      rows.push([csvEscape(firstName), csvEscape(lastName), csvEscape(email), csvEscape(phone)]);
+      const birthday = sub.buyer_birthday || '';
+      rows.push([csvEscape(firstName), csvEscape(lastName), csvEscape(email), csvEscape(phone), csvEscape(birthday)]);
     }
 
     const csv = rows.map(r => r.join(',')).join('\n');
@@ -1537,6 +1539,7 @@ app.post('/api/reset', requireAuth, requireAdmin, async (req, res) => {
         buyer_email: null,
         buyer_name: null,
         buyer_phone: null,
+        buyer_birthday: null,
         newsletter_opt_in: false,
         sold_at: null,
         transaction_id: null,
