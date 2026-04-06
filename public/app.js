@@ -129,89 +129,12 @@
     return fetch(url, { headers });
   }
 
-  // --- PIN login ---
-  async function requireSession() {
-    // If we already have a valid session, skip
-    if (sessionToken) {
-      const test = await fetch('/api/inventory', { headers: { 'X-Session-Token': sessionToken } });
-      if (test.ok) return true;
-      // Session expired
-      sessionToken = '';
-      sessionStorage.removeItem('pos-session');
-    }
-
-    // Show PIN screen
-    return new Promise((resolve) => {
-      const splash = document.getElementById('loadingSplash');
-      if (splash) splash.style.display = 'none';
-      const pinScreen = document.getElementById('pinScreen');
-      const pinInput = document.getElementById('pinInput');
-      const pinSubmit = document.getElementById('pinSubmit');
-      const pinError = document.getElementById('pinError');
-      pinScreen.style.display = 'flex';
-      pinInput.value = '';
-      pinError.textContent = '';
-      pinInput.focus();
-
-      let pinAttempts = 0;
-      const MAX_PIN_ATTEMPTS = 3;
-
-      async function tryLogin() {
-        const pin = pinInput.value.trim();
-        if (!pin) return;
-        pinSubmit.disabled = true;
-        try {
-          const res = await fetch('/api/session/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            sessionToken = data.token;
-            sessionStorage.setItem('pos-session', sessionToken);
-            pinScreen.style.display = 'none';
-            resolve(true);
-          } else if (res.status === 429) {
-            pinInput.style.display = 'none';
-            pinSubmit.style.display = 'none';
-            pinError.textContent = 'Locked out. Wait 15 minutes.';
-            pinError.style.fontSize = '14px';
-          } else {
-            pinAttempts++;
-            const remaining = MAX_PIN_ATTEMPTS - pinAttempts;
-            if (remaining <= 0) {
-              pinInput.style.display = 'none';
-              pinSubmit.style.display = 'none';
-              pinError.textContent = 'Locked out. Wait 15 minutes.';
-              pinError.style.fontSize = '14px';
-            } else {
-              pinError.textContent = `Incorrect PIN. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`;
-              pinInput.value = '';
-              pinInput.focus();
-            }
-          }
-        } catch (e) {
-          pinError.textContent = 'Connection error';
-        }
-        pinSubmit.disabled = false;
-      }
-
-      pinSubmit.onclick = tryLogin;
-      pinInput.onkeydown = (e) => { if (e.key === 'Enter') tryLogin(); };
-    });
-  }
-
   // --- Init ---
   async function init() {
     bindEvents();
     updateOnlineStatus();
 
     try {
-      // Hide PIN screen if present
-      const pinScreen = document.getElementById('pinScreen');
-      if (pinScreen) pinScreen.style.display = 'none';
-
       const res = await fetch('/api/config');
       appConfig = await res.json();
 
