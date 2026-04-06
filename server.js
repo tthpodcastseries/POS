@@ -39,17 +39,9 @@ function checkRateLimit(ip, type = 'pin') {
 }
 
 function requireAuth(req, res, next) {
-  // Support both session token and legacy API key
-  const token = req.headers['x-session-token'];
-  const legacyKey = req.headers['x-pos-key'];
-
-  if (token && activeSessions.has(token)) {
-    const session = activeSessions.get(token);
-    if (Date.now() - session.createdAt < SESSION_TTL) return next();
-    activeSessions.delete(token); // expired
-  }
-  if (legacyKey && legacyKey === API_KEY) return next();
-  return res.status(401).json({ error: 'Unauthorized' });
+  // PIN login removed - allow all requests through
+  // Admin-only endpoints are still protected by requireAdmin
+  return next();
 }
 
 // Admin password auth (for draw, reset, PII reports)
