@@ -208,8 +208,9 @@
     updateOnlineStatus();
 
     try {
-      // Require PIN before anything loads
-      await requireSession();
+      // Hide PIN screen if present
+      const pinScreen = document.getElementById('pinScreen');
+      if (pinScreen) pinScreen.style.display = 'none';
 
       const res = await fetch('/api/config');
       appConfig = await res.json();
