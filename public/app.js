@@ -12,6 +12,7 @@
   let buyerNewsletter = false;
   let cartIdCounter = 0;
   let expenseValue = '';
+  let editingExpenseTxId = null;
   let gfmValue = '';
   let pendingProduct = null; // for admin-locked product buttons
 
@@ -353,6 +354,7 @@
     document.getElementById('closeExpense').addEventListener('click', () => {
       closeModal('expenseModal');
       expenseValue = '';
+      editingExpenseTxId = null;
     });
 
     document.querySelectorAll('.numpad-btn').forEach(btn => {
@@ -616,9 +618,21 @@
 
   // --- Expense Modal ---
   function openExpenseModal() {
+    editingExpenseTxId = null;
     expenseValue = '';
+    document.querySelector('#expenseModal h2').textContent = 'Log Expense';
     updateExpenseDisplay();
     document.getElementById('expense-errors').textContent = '';
+    openModal('expenseModal');
+  }
+
+  function openEditExpenseModal(txId, amount, category) {
+    editingExpenseTxId = txId;
+    expenseValue = parseFloat(amount).toFixed(2);
+    document.querySelector('#expenseModal h2').textContent = 'Edit Expense';
+    updateExpenseDisplay();
+    document.getElementById('expense-errors').textContent = '';
+    // Highlight the current category briefly so user sees what they're editing
     openModal('expenseModal');
   }
 
@@ -641,13 +655,24 @@
     document.querySelectorAll('.expense-cat-btn').forEach(btn => { btn.disabled = true; });
 
     try {
-      const res = await authPost('/api/expense', { amount, category });
+      const isEditing = !!editingExpenseTxId;
+      const url = isEditing ? '/api/expense/update' : '/api/expense';
+      const body = isEditing
+        ? { txId: editingExpenseTxId, amount, category }
+        : { amount, category };
+      const res = await authPost(url, body);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
       closeModal('expenseModal');
       expenseValue = '';
-      showToast(`Expense logged: $${amount.toFixed(2)} - ${category}`, 'success', 3000);
+      const verb = isEditing ? 'updated' : 'logged';
+      showToast(`Expense ${verb}: $${amount.toFixed(2)} - ${category}`, 'success', 3000);
+      editingExpenseTxId = null;
+      // Refresh history if we were editing from there
+      if (isEditing && !document.getElementById('historyScreen').classList.contains('hidden')) {
+        loadHistory();
+      }
     } catch (err) {
       document.getElementById('expense-errors').textContent = 'Error: ' + err.message;
     } finally {
@@ -802,6 +827,16 @@
         .map(
           (t) => {
             const isRefunded = t.status === 'refunded';
+            const isExpense = t.method === 'expense';
+            let actionBtn = '';
+            if (!isRefunded) {
+              if (isExpense) {
+                const category = (t.description || '').replace('Expense: ', '');
+                actionBtn = `<button class="refund-btn edit-expense-btn" data-txid="${escapeHtml(t.tx_id)}" data-amount="${t.amount}" data-category="${escapeHtml(category)}">Edit</button>`;
+              } else {
+                actionBtn = `<button class="refund-btn" data-txid="${escapeHtml(t.tx_id)}" data-amount="${t.amount}" data-method="${t.method}">Refund</button>`;
+              }
+            }
             return `
         <div class="transaction-item ${isRefunded ? 'txn-refunded' : ''}">
           <div class="txn-info">
@@ -813,7 +848,7 @@
             ${isRefunded
               ? '<span class="txn-status refunded">refunded</span>'
               : `<span class="txn-method ${t.method}">${t.method}</span>
-                 <button class="refund-btn" data-txid="${escapeHtml(t.tx_id)}" data-amount="${t.amount}" data-method="${t.method}">Refund</button>`
+                 ${actionBtn}`
             }
           </div>
         </div>
@@ -823,12 +858,19 @@
         .join('');
 
       // Bind refund buttons
-      document.getElementById('transactionList').querySelectorAll('.refund-btn').forEach(btn => {
+      document.getElementById('transactionList').querySelectorAll('.refund-btn:not(.edit-expense-btn)').forEach(btn => {
         btn.addEventListener('click', () => {
           const txId = btn.dataset.txid;
           const amount = btn.dataset.amount;
           const method = btn.dataset.method;
           handleRefund(txId, amount, method, btn);
+        });
+      });
+
+      // Bind edit expense buttons
+      document.getElementById('transactionList').querySelectorAll('.edit-expense-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          openEditExpenseModal(btn.dataset.txid, btn.dataset.amount, btn.dataset.category);
         });
       });
     } catch (err) {

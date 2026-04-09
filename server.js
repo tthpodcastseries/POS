@@ -1076,6 +1076,38 @@ app.post('/api/expense', requireAuth, async (req, res) => {
   }
 });
 
+// Update an existing expense
+app.post('/api/expense/update', requireAuth, async (req, res) => {
+  try {
+    const { txId, amount, category } = req.body;
+    const validCategories = ['Advertising', 'Fees', 'Supplies', 'Refund', 'Misc'];
+    if (!txId || !txId.startsWith('exp_')) {
+      return res.status(400).json({ error: 'Invalid expense ID' });
+    }
+    if (!amount || amount < 0.01) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+    if (!category || !validCategories.includes(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        amount: parseFloat(amount).toFixed(2),
+        description: `Expense: ${category}`,
+      })
+      .eq('tx_id', txId)
+      .eq('method', 'expense');
+
+    if (error) throw error;
+    res.json({ status: 'updated' });
+  } catch (err) {
+    console.error('Error updating expense:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- GoFundMe Tracker ---
 
 app.get('/api/gofundme', requireAuth, async (req, res) => {
