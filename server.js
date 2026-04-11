@@ -979,15 +979,9 @@ app.post('/api/log-sale', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid amount' });
     }
 
-    // Check 50/50 ticket availability
+    // Check 50/50 ticket availability (no buyer info required for logged sales)
     const ticketCount = count5050Tickets(description);
     if (ticketCount > 0) {
-      if (!email) {
-        return res.status(400).json({ error: 'Email required for 50/50 tickets' });
-      }
-      if (!buyerName || !buyerName.trim()) {
-        return res.status(400).json({ error: 'Name required for 50/50 tickets' });
-      }
       const { count } = await supabase
         .from('tickets_5050')
         .select('*', { count: 'exact', head: true })

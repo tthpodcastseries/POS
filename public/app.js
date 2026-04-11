@@ -301,17 +301,12 @@
     document.getElementById('logSaleBtn').addEventListener('click', () => {
       const total = getTotal();
       if (total < 0.01) return;
-      if (cartNeedsBuyerInfo()) {
-        pendingPaymentType = 'logSale';
-        showEmailModal();
-      } else {
-        buyerEmail = '';
-        buyerName = '';
-        buyerPhone = '';
-        buyerBirthday = '';
-        buyerNewsletter = false;
-        handleLogSale();
-      }
+      buyerEmail = '';
+      buyerName = '';
+      buyerPhone = '';
+      buyerBirthday = '';
+      buyerNewsletter = false;
+      handleLogSale();
     });
 
     // --- Email modal ---
